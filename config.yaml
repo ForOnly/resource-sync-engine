@@ -17,6 +17,6 @@ resources:
   # ──────────────────────────────────────────────
   - name: "AI.list"
     url: "https://cdn.jsdmirror.com/gh/Passerby1011/Garbage-dump@HEAD/AI.list"
-    path: "data/AI.list"
+    path: "data/clash/rules/AI.list"
     algorithm: "sha256"
 
