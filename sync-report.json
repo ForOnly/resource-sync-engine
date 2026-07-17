@@ -1,0 +1,18 @@
+{
+  "run_id": "419ac44292c1",
+  "timestamp": "2026-07-17T08:34:43.523222+00:00",
+  "dry_run": false,
+  "summary": {
+    "created": 1
+  },
+  "results": [
+    {
+      "resource_name": "AI.list",
+      "status": "created",
+      "local_hash": null,
+      "remote_hash": "sha256:b9526ae00f707b6622bd4b630f20481673d3af9eb086ae1281fbff5fd54fd6d5",
+      "error_message": null,
+      "dry_run": false
+    }
+  ]
+}
