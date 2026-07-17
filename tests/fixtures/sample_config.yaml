@@ -1,0 +1,20 @@
+resources:
+  - name: "example-json"
+    url: "https://example.com/data.json"
+    path: "data/example.json"
+    algorithm: "sha256"
+
+  - name: "example-blocklist"
+    url: "https://example.org/blocklist.txt"
+    path: "data/blocklist.txt"
+    algorithm: "sha1"
+    headers:
+      Authorization: "Bearer ${API_TOKEN}"
+    timeout: 60
+    retry: 5
+
+  - name: "geoip-database"
+    url: "https://cdn.example.com/geoip.mmdb"
+    path: "data/geoip.mmdb"
+    algorithm: "md5"
+    max_size: 104857600

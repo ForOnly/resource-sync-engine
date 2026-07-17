@@ -1,0 +1,16 @@
+db.sqlite3
+*.pyc
+*.swp
+tmp/
+dump.rdb
+.vscode
+.vendor/
+.venv
+.pytest_cache/
+.qiniu_pythonsdk_hostscache.json
+.idea
+container_local.py
+lanqiao_private_deploy_local.py
+.DS_Store
+puml_workflow/
+.pylintrc
