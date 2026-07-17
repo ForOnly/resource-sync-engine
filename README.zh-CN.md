@@ -245,6 +245,10 @@ jobs:
           python-version: "3.11"
           cache: "pip"
       - run: pip install -r requirements.txt
+      - name: 配置 Git 身份
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
       - run: python -m resource_sync -c config.yaml
         env:
           API_TOKEN: ${{ secrets.API_TOKEN }}
@@ -253,6 +257,8 @@ jobs:
 2. 在仓库中添加所需的 Secrets：
    - 进入 **Settings → Secrets and variables → Actions**
    - 添加 `API_TOKEN`、`HOST` 等 Secrets
+
+> **重要**：工作流中必须配置 Git 身份信息，否则提交会失败。项目中已包含 `git config` 步骤。
 
 ### 工作流行为
 

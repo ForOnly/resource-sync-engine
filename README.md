@@ -245,6 +245,10 @@ jobs:
           python-version: "3.11"
           cache: "pip"
       - run: pip install -r requirements.txt
+      - name: Configure Git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
       - run: python -m resource_sync -c config.yaml
         env:
           API_TOKEN: ${{ secrets.API_TOKEN }}
@@ -253,6 +257,8 @@ jobs:
 2. Add any required secrets in your repository:
    - Go to **Settings → Secrets and variables → Actions**
    - Add secrets like `API_TOKEN`, `HOST`, etc.
+
+> **Important**: The workflow must configure a Git identity before committing, otherwise the commit will fail. The workflow above includes the required `git config` step.
 
 ### Workflow Behavior
 

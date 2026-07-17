@@ -41,9 +41,23 @@ def _run_git(repo_root: Path, *args: str) -> str:
         raise GitError("Git is not installed or not found in PATH")
 
     if result.returncode != 0:
+        stderr = result.stderr.strip()
+        # Provide a clearer error for missing Git identity (common in CI)
+        if "Author identity unknown" in stderr or "empty ident name" in stderr:
+            raise GitError(
+                "Git commit failed because no author identity is configured.\n"
+                "  Run the following commands to fix:\n"
+                "    git config user.name \"Your Name\"\n"
+                "    git config user.email \"you@example.com\"\n"
+                "  Or in GitHub Actions, add a step before the sync:\n"
+                "    - name: Configure Git identity\n"
+                "      run: |\n"
+                "        git config user.name \"github-actions[bot]\"\n"
+                "        git config user.email \"github-actions[bot]@users.noreply.github.com\""
+            )
         raise GitError(
             f"Git command 'git {' '.join(args)}' failed:\n"
-            f"  stderr: {result.stderr.strip()}"
+            f"  stderr: {stderr}"
         )
 
     return result.stdout.strip()
