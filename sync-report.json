@@ -1,10 +1,9 @@
 {
-  "run_id": "577230e797a8",
-  "timestamp": "2026-07-17T08:52:49.469515+00:00",
+  "run_id": "c0f714228610",
+  "timestamp": "2026-07-17T13:11:41.043708+00:00",
   "dry_run": false,
   "summary": {
-    "skipped": 1,
-    "created": 1
+    "skipped": 2
   },
   "results": [
     {
@@ -17,8 +16,8 @@
     },
     {
       "resource_name": "ChinaIp.list",
-      "status": "created",
-      "local_hash": null,
+      "status": "skipped",
+      "local_hash": "sha256:bb62220ae6ba9ee37421d0ba8ec734dc9d71af2cc8cd7209685f0d4939d7cca2",
       "remote_hash": "sha256:bb62220ae6ba9ee37421d0ba8ec734dc9d71af2cc8cd7209685f0d4939d7cca2",
       "error_message": null,
       "dry_run": false
