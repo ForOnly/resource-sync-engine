@@ -20,3 +20,8 @@ resources:
     path: "data/clash/rules/AI.list"
     algorithm: "sha256"
 
+  - name: "ChinaIp.list"
+    url: "https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/ChinaIp.list"
+    path: "data/clash/rules/ChinaIp.list"
+    algorithm: "sha256"
+
