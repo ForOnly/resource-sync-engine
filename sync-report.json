@@ -1,16 +1,25 @@
 {
-  "run_id": "419ac44292c1",
-  "timestamp": "2026-07-17T08:34:43.523222+00:00",
+  "run_id": "577230e797a8",
+  "timestamp": "2026-07-17T08:52:49.469515+00:00",
   "dry_run": false,
   "summary": {
+    "skipped": 1,
     "created": 1
   },
   "results": [
     {
       "resource_name": "AI.list",
+      "status": "skipped",
+      "local_hash": "sha256:b9526ae00f707b6622bd4b630f20481673d3af9eb086ae1281fbff5fd54fd6d5",
+      "remote_hash": "sha256:b9526ae00f707b6622bd4b630f20481673d3af9eb086ae1281fbff5fd54fd6d5",
+      "error_message": null,
+      "dry_run": false
+    },
+    {
+      "resource_name": "ChinaIp.list",
       "status": "created",
       "local_hash": null,
-      "remote_hash": "sha256:b9526ae00f707b6622bd4b630f20481673d3af9eb086ae1281fbff5fd54fd6d5",
+      "remote_hash": "sha256:bb62220ae6ba9ee37421d0ba8ec734dc9d71af2cc8cd7209685f0d4939d7cca2",
       "error_message": null,
       "dry_run": false
     }
