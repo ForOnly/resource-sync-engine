@@ -32,6 +32,7 @@ permissions:
 jobs:
   sync:
     name: Sync Resources
+    environment: DINGTALK_WEBHOOK
     runs-on: ubuntu-latest
 
     steps:
