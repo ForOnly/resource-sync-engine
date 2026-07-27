@@ -1,5 +1,5 @@
 """
-Domain models — dataclasses and enums used across all modules.
+Domain models — Pydantic models used across all modules.
 
 All configuration models are frozen (immutable). Result models are mutable
 because they are built incrementally during a sync run.
@@ -9,11 +9,12 @@ from __future__ import annotations
 
 import json
 import uuid
-from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class HashAlgorithm(str, Enum):
@@ -33,30 +34,33 @@ class SyncStatus(str, Enum):
     ERROR = "error"
 
 
-@dataclass(frozen=True)
-class Resource:
+class Resource(BaseModel):
     """A single resource definition parsed from the YAML config."""
+
+    model_config = ConfigDict(frozen=True)
 
     name: str
     url: str
     path: Path
     algorithm: HashAlgorithm = HashAlgorithm.SHA256
-    headers: dict[str, str] = field(default_factory=dict)
+    headers: dict[str, str] = Field(default_factory=dict)
     timeout: float = 30.0
     retry: int = 3
     max_size: int = 500 * 1024 * 1024  # 500 MB
 
 
-@dataclass(frozen=True)
-class SyncConfig:
+class SyncConfig(BaseModel):
     """Top-level configuration holding all resources."""
+
+    model_config = ConfigDict(frozen=True)
 
     resources: tuple[Resource, ...]
 
 
-@dataclass(frozen=True)
-class HashResult:
+class HashResult(BaseModel):
     """Result of a hash computation — algorithm plus hex digest."""
+
+    model_config = ConfigDict(frozen=True)
 
     algorithm: HashAlgorithm
     hex_digest: str
@@ -69,8 +73,7 @@ class HashResult:
         return f"{self.algorithm.value}:{self.hex_digest}"
 
 
-@dataclass
-class SyncResult:
+class SyncResult(BaseModel):
     """Per-resource outcome of a single sync operation."""
 
     resource_name: str
@@ -81,16 +84,15 @@ class SyncResult:
     dry_run: bool = False
 
 
-@dataclass
-class SyncReport:
+class SyncReport(BaseModel):
     """Aggregate report for a full sync run, serializable to JSON."""
 
-    run_id: str = field(default_factory=lambda: uuid.uuid4().hex[:12])
-    timestamp: str = field(
+    run_id: str = Field(default_factory=lambda: uuid.uuid4().hex[:12])
+    timestamp: str = Field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat()
     )
     dry_run: bool = False
-    results: list[SyncResult] = field(default_factory=list)
+    results: list[SyncResult] = Field(default_factory=list)
 
     @property
     def summary(self) -> dict[str, int]:
