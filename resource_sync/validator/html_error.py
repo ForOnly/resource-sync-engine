@@ -17,8 +17,14 @@ _CHECK_SIZE = 2048
 
 @register_validator
 class HtmlErrorValidator:
-    """Detects HTML error pages returned with a 2xx status code."""
+    """Detects HTML error pages returned with a 2xx status code.
+
+    Only buffers the first _CHECK_SIZE bytes (2048) for inspection,
+    then forwards the stream as-is — O(1) memory relative to file size.
+    """
+
     name: ClassVar[str] = "html_error"
+    priority: ClassVar[int] = 200  # Run after empty check, before size check
 
     @classmethod
     def should_apply(cls, resource: Resource) -> bool:
@@ -28,20 +34,25 @@ class HtmlErrorValidator:
         return self._validate
 
     async def _validate(self, stream: Stream, resource: Resource, ctx: PipelineContext) -> Stream:
+        """Validate the stream content in a streaming fashion.
+
+        Buffers at most _CHECK_SIZE bytes to inspect the head of the
+        content for HTML error page signatures, then yields the head
+        and forwards the remaining stream chunk by chunk.
+        """
         head = b""
-        rest: list[bytes] = []
         async for chunk in stream:
-            needed = _CHECK_SIZE - len(head)
-            if needed > 0:
-                head += chunk[:needed]
-                if len(chunk) > needed:
-                    rest.append(chunk[needed:])
-            else:
-                rest.append(chunk)
+            head += chunk
+            if len(head) >= _CHECK_SIZE:
+                break
+
         _check_html_error(head, resource.name)
-        yield head
-        for r in rest:
-            yield r
+
+        # Yield the head bytes first
+        if head:
+            yield head
+
+        # Forward the rest of the stream as-is
         async for chunk in stream:
             yield chunk
 

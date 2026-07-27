@@ -290,79 +290,99 @@ In GitHub Actions, pass environment variables via the `env` key:
 ```
 resource-sync/
 ├── .github/workflows/
-│   └── sync.yml              # GitHub Actions workflow
-├── src/
-│   └── resource_sync/
-│       ├── __init__.py        # Package init & version
-│       ├── __main__.py        # `python -m` entry point
-│       ├── cli.py             # CLI argument parsing & orchestration
-│       ├── config.py          # YAML loader with env var substitution
-│       ├── content_validator.py  # Content safety checks
-│       ├── downloader.py      # HTTP download with retries
-│       ├── exceptions.py      # Exception hierarchy
-│       ├── git_ops.py         # Git stage, commit, push
-│       ├── hasher.py          # SHA-256/SHA-1/MD5 hashing
-│       ├── models.py          # Dataclasses & enums
-│       └── syncer.py          # Core sync engine
-├── tests/
-│   ├── conftest.py            # Shared test fixtures
-│   ├── test_cli.py            # CLI tests
-│   ├── test_config.py         # Config parser tests
-│   ├── test_content_validator.py  # Content validation tests
-│   ├── test_downloader.py     # HTTP download tests
-│   ├── test_git_ops.py        # Git operation tests
-│   ├── test_hasher.py         # Hash computation tests
-│   └── test_syncer.py         # Sync engine tests
-├── config.yaml                # Default configuration
-├── requirements.txt           # Python dependencies
-└── README.md                  # This file
+│   └── sync.yml                  # GitHub Actions workflow
+├── resource_sync/                # Main package
+│   ├── __init__.py               # Package init & version
+│   ├── __main__.py               # `python -m` entry point
+│   ├── cli/                      # CLI layer
+│   │   ├── app.py                # CLI bootstrap, orchestration, report
+│   │   └── parser.py             # Argument parser
+│   ├── domain/                   # Pure domain layer
+│   │   ├── models.py             # Pydantic models (Resource, SyncReport, etc.)
+│   │   ├── events.py             # Domain events (SyncStarted, ResourceWritten, etc.)
+│   │   ├── pipeline.py           # Pipeline declaration (source→validators→transforms→sink)
+│   │   └── stream.py             # Stream types, protocols, utilities
+│   ├── engine/                   # Engine layer
+│   │   ├── config.py             # YAML config loader with env var substitution
+│   │   ├── builder.py            # Pipeline builder — assembles pipelines from plugins
+│   │   ├── executor.py           # Pipeline executor — runs a single resource pipeline
+│   │   └── orchestrator.py       # Sync orchestrator — manages full sync lifecycle
+│   ├── eventbus/                 # Event bus
+│   │   └── memory.py             # In-memory event bus implementation
+│   ├── fetcher/                  # Data source plugins
+│   │   └── http.py               # HTTP/HTTPS streaming fetcher
+│   ├── plugin/                   # Plugin system
+│   │   ├── errors.py             # Plugin exception hierarchy
+│   │   ├── registry.py           # Plugin registry + decorator registration
+│   │   └── types.py              # Plugin protocol definitions
+│   ├── sink/                     # Output destination plugins
+│   │   ├── drain.py              # No-op drain sink (dry-run mode)
+│   │   ├── git.py                # Git-aware sink (write + commit)
+│   │   └── local.py              # Local file sink with two-phase commit
+│   ├── transform/                # Stream transform plugins
+│   │   ├── identity.py           # Identity transform (pass-through, reference impl)
+│   │   └── ...                   # Add custom transforms here
+│   └── validator/                # Content validation plugins
+│       ├── empty.py              # Empty file detection
+│       ├── html_error.py         # HTML error page detection
+│       └── size.py               # Max file size enforcement
+├── tests/                        # Test suite (see Development section)
+├── config.yaml                   # Default configuration
+├── pyproject.toml                # Project metadata & dependencies
+├── requirements.txt              # Pinned dependencies (pip install)
+├── README.md                     # English documentation
+└── README.zh-CN.md               # Chinese documentation
 ```
-
-## Development
-
-### Running Tests
-
-```bash
-# Install test dependencies
-pip install pytest pytest-httpx
-
-# Run all tests
-python -m pytest tests/ -v
-
-# Run with coverage
-pip install pytest-cov
-python -m pytest tests/ -v --cov=src/resource_sync
-```
-
-### Writing Tests
-
-The test suite uses:
-- `pytest` for test discovery and execution
-- `pytest-httpx` for mocking HTTP responses
-- `tmp_path` fixture for temporary files
-- `unittest.mock` for module-level mocking
 
 ## Architecture
 
 ### Module Dependency Graph
 
 ```
-__main__.py → cli.py → config.py ← models.py → exceptions.py (leaf)
-                      → syncer.py → hasher.py
-                                  → downloader.py
-                                  → content_validator.py
-                      → git_ops.py
+__main__.py → cli/app.py → engine/config.py → domain/models.py (leaf)
+                          → engine/orchestrator.py → engine/builder.py → plugin/registry.py
+                                                    → engine/executor.py → domain/stream.py
+                                                                         → sink/*.py
+                                                                         → domain/events.py
+                                                                         → eventbus/memory.py
+                          → plugin/registry.py (decorator registration)
+                          → fetcher/*.py → plugin/registry.py
+                          → validator/*.py → plugin/registry.py
+                          → sink/*.py → plugin/registry.py
 ```
 
-- **models.py** — Foundation dataclasses (Resource, SyncConfig, SyncResult, SyncReport)
-- **exceptions.py** — Exception hierarchy (ResourceSyncError → ConfigError, DownloadError, etc.)
-- **config.py** — YAML parsing, validation, `${ENV_VAR}` substitution
-- **hasher.py** — Streaming file hashing (64 KiB chunks) and in-memory byte hashing
-- **downloader.py** — HTTP/HTTPS download with timeout and retry logic
-- **content_validator.py** — Empty file, size limit, and HTML error page detection
-- **syncer.py** — Core decision tree: download → hash → compare → create/update/skip
-- **git_ops.py** — Git stage, commit, and push operations
-- **cli.py** — CLI orchestration, report generation, exit code handling
+### Architecture Overview
+
+- **domain/** — Pure domain models (Pydantic), events, pipeline declarations, and stream type protocols. No I/O, no side effects.
+- **engine/** — Configuration loading, pipeline building, execution, and orchestration. The engine assembles pipelines from registered plugins and runs them.
+- **plugin/** — Decorator-based plugin registry. Five plugin types: fetcher, validator, transform, sink, observer.
+- **fetcher/** — Data source plugins. Each fetcher handles one or more URL schemes (e.g., `http`, `https`).
+- **validator/** — Content safety checks applied to every downloaded resource.
+- **transform/** — Stream transformations (decompress, decrypt, filter, etc.).
+- **sink/** — Output destinations. Local file system, Git-aware writer, drain (dry-run).
+- **eventbus/** — In-memory event bus with subscribe/emit pattern.
+- **cli/** — Argument parsing and application bootstrap.
+
+### Plugin Registration
+
+Plugins are registered via decorators at import time:
+
+```python
+@register_fetcher(schemes=frozenset({"http", "https"}))
+class HttpFetcher: ...
+```
+
+The `_discover_plugins()` function in `app.py` imports all plugin modules, triggering their decorators.
+
+### Streaming Pipeline
+
+Each resource is processed through a streaming pipeline:
+
+```
+Fetch (source) → Validators → Transforms → Hash (tee) → Sink (write)
+```
+
+The stream is an `AsyncIterator[bytes]`, allowing O(chunk_size) memory usage regardless of file size. The hash is computed as the stream passes through via `tee_stream()`, avoiding a separate pass.
 
 ## License
 

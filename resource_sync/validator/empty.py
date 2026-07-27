@@ -14,6 +14,7 @@ from resource_sync.plugin.registry import register_validator
 class EmptyValidator:
     """Validates that downloaded content is not empty."""
     name: ClassVar[str] = "empty"
+    priority: ClassVar[int] = 100  # Run early — cheap check before expensive ones
 
     @classmethod
     def should_apply(cls, resource: Resource) -> bool:

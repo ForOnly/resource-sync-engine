@@ -14,6 +14,7 @@ from resource_sync.plugin.registry import register_validator
 class SizeValidator:
     """Validates content does not exceed max_size."""
     name: ClassVar[str] = "size"
+    priority: ClassVar[int] = 300  # Run last — checks every chunk
 
     @classmethod
     def should_apply(cls, resource: Resource) -> bool:

@@ -23,7 +23,13 @@ Stream = AsyncIterator[bytes]
 # ─── Cancellation ───
 
 class CancellationToken:
-    """Cooperative cancellation token propagated through the pipeline."""
+    """Cooperative cancellation token propagated through the pipeline.
+
+    Once cancelled, a token should typically be discarded rather than
+    reset. The reset() method is provided for testing and for
+    token-reuse scenarios where the same pipeline structure runs
+    multiple times.
+    """
 
     def __init__(self, parent: CancellationToken | None = None) -> None:
         self._parent = parent
@@ -35,6 +41,15 @@ class CancellationToken:
         self._event.set()
         if self._parent is not None:
             self._parent.cancel()
+
+    def reset(self) -> None:
+        """Reset the token to the uncancelled state.
+
+        Does NOT reset parent tokens. Call with care — prefer creating
+        a fresh token via child() or CancellationToken() instead.
+        """
+        self._cancelled = False
+        self._event = asyncio.Event()
 
     @property
     def cancelled(self) -> bool:

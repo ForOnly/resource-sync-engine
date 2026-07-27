@@ -90,7 +90,12 @@ def main(argv: list[str] | None = None) -> int:
             args.dry_run,
             config.max_concurrency,
         )
-        report = asyncio.run(orchestrator.run(config, dry_run=args.dry_run))
+        async def _run_and_cleanup():
+            report = await orchestrator.run(config, dry_run=args.dry_run)
+            await orchestrator.shutdown()
+            return report
+
+        report = asyncio.run(_run_and_cleanup())
 
         # 5. Write report
         report_written = _write_report(report.to_json(), repo_root)
@@ -108,15 +113,8 @@ def main(argv: list[str] | None = None) -> int:
         # 7. Git commit (once, after all resources are synced)
         if not args.dry_run and not args.no_commit and report.changed > 0:
             _LOGGER.info("Auto-committing %d changed resource(s)...", report.changed)
-            try:
-                from resource_sync.sink.git import GitSink
-
-                git_root = config.repo_root or config_path.parent.resolve()
-                git = GitSink(repo_root=git_root)
-                if not git.commit_all(repo_root=git_root, resource_count=report.changed):
-                    return 1
-            except Exception as e:
-                _LOGGER.error("Git operation failed: %s", e)
+            git_root = str(config.repo_root or config_path.parent.resolve())
+            if not orchestrator.commit_changes(repo_root=git_root, changed=report.changed):
                 return 1
 
         # 8. Exit code

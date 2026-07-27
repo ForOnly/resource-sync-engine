@@ -290,80 +290,99 @@ jobs:
 ```
 resource-sync/
 ├── .github/workflows/
-│   └── sync.yml              # GitHub Actions 工作流
-├── src/
-│   └── resource_sync/
-│       ├── __init__.py        # 包初始化与版本号
-│       ├── __main__.py        # `python -m` 入口
-│       ├── cli.py             # CLI 参数解析与编排
-│       ├── config.py          # YAML 加载与环境变量替换
-│       ├── content_validator.py  # 内容安全校验
-│       ├── downloader.py      # HTTP 下载（含重试）
-│       ├── exceptions.py      # 异常层次结构
-│       ├── git_ops.py         # Git 暂存、提交、推送
-│       ├── hasher.py          # SHA-256/SHA-1/MD5 哈希计算
-│       ├── models.py          # Dataclass 与枚举定义
-│       └── syncer.py          # 核心同步引擎
-├── tests/
-│   ├── conftest.py            # 共享测试夹具
-│   ├── test_cli.py            # CLI 测试
-│   ├── test_config.py         # 配置解析测试
-│   ├── test_content_validator.py  # 内容校验测试
-│   ├── test_downloader.py     # HTTP 下载测试
-│   ├── test_git_ops.py        # Git 操作测试
-│   ├── test_hasher.py         # 哈希计算测试
-│   └── test_syncer.py         # 同步引擎测试
-├── config.yaml                # 默认配置文件
-├── requirements.txt           # Python 依赖
-├── README.md                  # 英文文档
-└── README.zh-CN.md            # 中文文档（本文件）
+│   └── sync.yml                  # GitHub Actions 工作流
+├── resource_sync/                # 主包
+│   ├── __init__.py               # 包初始化与版本号
+│   ├── __main__.py               # `python -m` 入口
+│   ├── cli/                      # CLI 层
+│   │   ├── app.py                # CLI 启动、编排、报告生成
+│   │   └── parser.py             # 参数解析器
+│   ├── domain/                   # 纯领域层
+│   │   ├── models.py             # Pydantic 模型（Resource, SyncReport 等）
+│   │   ├── events.py             # 领域事件（SyncStarted, ResourceWritten 等）
+│   │   ├── pipeline.py           # 管道声明（source→validators→transforms→sink）
+│   │   └── stream.py             # 流类型、协议、工具函数
+│   ├── engine/                   # 引擎层
+│   │   ├── config.py             # YAML 配置加载与环境变量替换
+│   │   ├── builder.py            # 管道构建器 — 从插件组装管道
+│   │   ├── executor.py           # 管道执行器 — 运行单个资源管道
+│   │   └── orchestrator.py       # 同步编排器 — 管理完整同步生命周期
+│   ├── eventbus/                 # 事件总线
+│   │   └── memory.py             # 内存事件总线实现
+│   ├── fetcher/                  # 数据源插件
+│   │   └── http.py               # HTTP/HTTPS 流式下载器
+│   ├── plugin/                   # 插件系统
+│   │   ├── errors.py             # 插件异常层次结构
+│   │   ├── registry.py           # 插件注册表 + 装饰器注册
+│   │   └── types.py              # 插件协议定义
+│   ├── sink/                     # 输出端插件
+│   │   ├── drain.py              # 无操作 drain sink（dry-run 模式）
+│   │   ├── git.py                # Git 感知 sink（写入 + 提交）
+│   │   └── local.py              # 本地文件 sink（两阶段提交）
+│   ├── transform/                # 流转换插件
+│   │   ├── identity.py           # 恒等转换（透传，参考实现）
+│   │   └── ...                   # 在此添加自定义转换器
+│   └── validator/                # 内容验证插件
+│       ├── empty.py              # 空文件检测
+│       ├── html_error.py         # HTML 错误页面检测
+│       └── size.py               # 最大文件大小限制
+├── tests/                        # 测试套件（见"开发"章节）
+├── config.yaml                   # 默认配置文件
+├── pyproject.toml                # 项目元数据与依赖
+├── requirements.txt              # 依赖锁定文件（pip install）
+├── README.md                     # 英文文档
+└── README.zh-CN.md               # 中文文档（本文件）
 ```
-
-## 开发
-
-### 运行测试
-
-```bash
-# 安装测试依赖
-pip install pytest pytest-httpx
-
-# 运行所有测试
-python -m pytest tests/ -v
-
-# 运行测试并生成覆盖率报告
-pip install pytest-cov
-python -m pytest tests/ -v --cov=src/resource_sync
-```
-
-### 编写测试
-
-测试套件使用：
-- `pytest` — 测试发现与执行
-- `pytest-httpx` — 模拟 HTTP 响应
-- `tmp_path` fixture — 临时文件
-- `unittest.mock` — 模块级模拟
 
 ## 架构
 
 ### 模块依赖关系图
 
 ```
-__main__.py → cli.py → config.py ← models.py → exceptions.py（叶子节点）
-                      → syncer.py → hasher.py
-                                  → downloader.py
-                                  → content_validator.py
-                      → git_ops.py
+__main__.py → cli/app.py → engine/config.py → domain/models.py（叶子节点）
+                          → engine/orchestrator.py → engine/builder.py → plugin/registry.py
+                                                    → engine/executor.py → domain/stream.py
+                                                                         → sink/*.py
+                                                                         → domain/events.py
+                                                                         → eventbus/memory.py
+                          → plugin/registry.py（装饰器注册）
+                          → fetcher/*.py → plugin/registry.py
+                          → validator/*.py → plugin/registry.py
+                          → sink/*.py → plugin/registry.py
 ```
 
-- **models.py** — 基础 dataclass（Resource、SyncConfig、SyncResult、SyncReport）
-- **exceptions.py** — 异常层次结构（ResourceSyncError → ConfigError、DownloadError 等）
-- **config.py** — YAML 解析、校验、`${ENV_VAR}` 替换
-- **hasher.py** — 流式文件哈希（64 KiB 分块）和内存字节哈希
-- **downloader.py** — HTTP/HTTPS 下载，含超时和重试逻辑
-- **content_validator.py** — 空文件、大小限制、HTML 错误页面检测
-- **syncer.py** — 核心决策树：下载 → 哈希 → 比对 → 创建/更新/跳过
-- **git_ops.py** — Git 暂存、提交、推送操作
-- **cli.py** — CLI 编排、报告生成、退出码处理
+### 架构概述
+
+- **domain/** — 纯领域模型（Pydantic）、事件、管道声明、流类型协议。无 I/O、无副作用。
+- **engine/** — 配置加载、管道构建、执行、编排。引擎从注册的插件组装管道并运行。
+- **plugin/** — 基于装饰器的插件注册表。五种插件类型：fetcher、validator、transform、sink、observer。
+- **fetcher/** — 数据源插件。每个 fetcher 处理一个或多个 URL 协议（如 `http`、`https`）。
+- **validator/** — 内容安全检查，应用于每个下载的资源。
+- **transform/** — 流转换（解压缩、解密、过滤等）。
+- **sink/** — 输出目标。本地文件系统、Git 感知写入器、drain（dry-run）。
+- **eventbus/** — 内存事件总线，支持 subscribe/emit 模式。
+- **cli/** — 参数解析与应用启动。
+
+### 插件注册
+
+插件通过装饰器在导入时注册：
+
+```python
+@register_fetcher(schemes=frozenset({"http", "https"}))
+class HttpFetcher: ...
+```
+
+`app.py` 中的 `_discover_plugins()` 函数导入所有插件模块，触发其装饰器。
+
+### 流式管道
+
+每个资源通过流式管道处理：
+
+```
+Fetch（数据源）→ Validators（验证器）→ Transforms（转换器）→ Hash（哈希，tee）→ Sink（写入）
+```
+
+流是 `AsyncIterator[bytes]`，无论文件大小如何，都能保证 O(chunk_size) 的内存使用。哈希通过 `tee_stream()` 在流经过时实时计算，避免额外遍历。
 
 ## 许可证
 

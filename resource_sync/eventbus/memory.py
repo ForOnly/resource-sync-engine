@@ -20,6 +20,14 @@ class EventBus:
         self._wildcards: list[EventHandler] = []
 
     def subscribe(self, event_type: type[Event] | None = None) -> Callable[[EventHandler], EventHandler]:
+        """Decorator: subscribe a handler to an event type.
+
+        Usage:
+            @bus.subscribe(SyncStarted)
+            async def handler(event): ...
+
+        For direct (non-decorator) subscription, use subscribe_handler().
+        """
         def decorator(handler: EventHandler) -> EventHandler:
             if event_type is None:
                 self._wildcards.append(handler)
@@ -27,6 +35,16 @@ class EventBus:
                 self._handlers.setdefault(event_type, []).append(handler)
             return handler
         return decorator
+
+    def subscribe_handler(self, event_type: type[Event], handler: EventHandler) -> None:
+        """Directly subscribe a handler to an event type (non-decorator)."""
+        self._handlers.setdefault(event_type, []).append(handler)
+
+    def unsubscribe(self, event_type: type[Event], handler: EventHandler) -> None:
+        """Remove a handler from an event type."""
+        handlers = self._handlers.get(event_type, [])
+        if handler in handlers:
+            handlers.remove(handler)
 
     def register_observer(self, observer: Any) -> None:
         if not hasattr(observer, "on_event"):

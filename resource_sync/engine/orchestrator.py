@@ -12,6 +12,7 @@ from resource_sync.engine.builder import PipelineBuilder
 from resource_sync.engine.config import Config
 from resource_sync.engine.executor import PipelineExecutor
 from resource_sync.eventbus.memory import EventBus
+from resource_sync.plugin.registry import get_registry
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -119,6 +120,47 @@ class SyncOrchestrator:
             report.summary.get("error", 0),
         )
         return report
+
+    def commit_changes(self, repo_root: str | None, changed: int) -> bool:
+        """Commit and push changed resources to Git.
+
+        Uses the registered 'git' sink to perform the commit. This method
+        is called after all resources are synced, preserving the plugin
+        architecture by going through the registry rather than importing
+        GitSink directly.
+
+        Returns True on success, False on failure.
+        """
+        if changed <= 0:
+            _LOGGER.info("No changes to commit — skipping")
+            return True
+
+        try:
+            registry = get_registry()
+            git_sink_cls = registry.get_sink("git")
+            from pathlib import Path
+            git = git_sink_cls(repo_root=Path(repo_root) if repo_root else None)
+            return git.commit_all(repo_root=git.repo_root, resource_count=changed)
+        except Exception as e:
+            _LOGGER.error("Git operation failed: %s", e)
+            return False
+
+    async def shutdown(self) -> None:
+        """Release shared resources (HTTP connection pool, etc.).
+
+        Should be called after run() completes, especially in long-lived
+        processes or when the event loop is reused.
+        """
+        try:
+            from resource_sync.fetcher.http import _get_shared_transport
+            transport = _get_shared_transport()
+            if transport is not None:
+                await transport.aclose()
+                _LOGGER.debug("Closed shared HTTP transport")
+        except (RuntimeError, Exception) as e:
+            # RuntimeError: event loop is closed; other errors: transport issues
+            if "Event loop is closed" not in str(e):
+                _LOGGER.warning("Failed to close HTTP transport: %s", e)
 
     @staticmethod
     def _log_result(result: ResourceResult) -> None:

@@ -78,6 +78,10 @@ class PluginRegistry:
             raise PluginNotFoundError(f"No transform: '{name}'")
         return self._transforms[name]
 
+    def get_transforms(self) -> list[Any]:
+        """Return all registered transforms as a list (for iteration)."""
+        return list(self._transforms.values())
+
     def get_validators(self) -> list[Any]:
         return list(self._validators)
 

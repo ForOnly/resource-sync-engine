@@ -19,14 +19,6 @@ dev = ["pytest>=8.0", "pytest-httpx>=0.30", "pytest-asyncio>=0.23", "mypy>=1.8",
 [project.scripts]
 resource-sync = "resource_sync.cli.app:main"
 
-[tool.hatch.envs.default]
-dependencies = ["resource-sync-engine[dev]"]
-
-[tool.hatch.envs.default.scripts]
-test = "pytest {args:tests/}"
-typecheck = "mypy resource_sync/"
-lint = "ruff check resource_sync/"
-
 [tool.mypy]
 strict = true
 python_version = "3.11"
@@ -37,3 +29,10 @@ warn_unused_ignores = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N"]

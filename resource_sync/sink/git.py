@@ -30,7 +30,7 @@ class GitSink:
     name: ClassVar[str] = "git"
 
     def __init__(self, repo_root: Path | None = None) -> None:
-        self._repo_root = repo_root
+        self.repo_root = repo_root
 
     @classmethod
     def configure(cls, resource: Resource) -> StreamSink:
@@ -82,8 +82,8 @@ class GitSink:
 
     def _resolve_repo_root(self) -> Path | None:
         """Resolve the Git repository root directory."""
-        if self._repo_root is not None:
-            return self._repo_root
+        if self.repo_root is not None:
+            return self.repo_root
         # Fallback: use cwd
         cwd = Path.cwd()
         for parent in [cwd] + list(cwd.parents):

@@ -26,6 +26,7 @@ from resource_sync.domain.stream import (
     tee_stream,
 )
 from resource_sync.eventbus.memory import EventBus
+from resource_sync.sink.local import LocalSink
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -51,8 +52,9 @@ class PipelineExecutor:
 
         try:
             # Stage 0: Compute local file hash (if exists)
+            t0 = time.monotonic()
             local_hash = await self._compute_local_hash(resource)
-            stage_times["local_hash"] = 0.0
+            stage_times["local_hash"] = (time.monotonic() - t0) * 1000
 
             # Stage 1: Fetch
             await self._events.emit(ResourceFetchStarted(resource_name=resource.name))
@@ -64,27 +66,29 @@ class PipelineExecutor:
             ))
             stream = fetch_result.stream
 
-            # Stage 2-3: Validate + Transform (async generators, no await)
+            # Stage 2-3: Validate + Transform (wrap with timing)
             for stage_name, stages in [
                 ("validate", pipeline.validators),
                 ("transform", pipeline.transforms),
             ]:
                 for stage_fn in stages:
-                    t0 = time.monotonic()
-                    stream = stage_fn(stream, resource, ctx)
-                    stage_times[f"{stage_name}.{type(stage_fn).__name__}"] = (time.monotonic() - t0) * 1000
+                    stream = _TimedStreamWrapper(
+                        stream, stage_fn, resource, ctx, stage_name,
+                        stage_times,
+                    )
 
             # Stage 4: Hash (tee'd — computed as stream is consumed)
             hasher = hashlib.new(resource.algorithm.value)
             stream = tee_stream(stream, lambda c: hasher.update(c))
 
-            # Stage 5: Sink (consume the stream, writing to disk)
+            # Stage 5: Sink (consume the stream, writing to temp file)
             if pipeline.sink is not None:
                 t0 = time.monotonic()
                 write_result = await pipeline.sink.write(stream, resource, ctx)
                 stage_times["sink"] = (time.monotonic() - t0) * 1000
             else:
                 await drain_stream(stream)
+                write_result = None
 
             # Now the hasher has processed all chunks — finalize
             remote_hash = HashResult(
@@ -94,8 +98,8 @@ class PipelineExecutor:
 
             # Stage 6: Compare hashes and determine status
             if local_hash is not None and local_hash.matches(remote_hash):
-                # Hash matches — file unchanged. Undo the write.
-                self._undo_write(resource)
+                # Hash matches — file unchanged. Discard the temp file.
+                self._discard_temp(pipeline, resource, ctx)
                 stage_times["compare"] = 0.0
                 await self._events.emit(ResourceSkipped(resource_name=resource.name))
                 await self._events.emit(
@@ -110,14 +114,16 @@ class PipelineExecutor:
                     dry_run=ctx.config.get("dry_run", False),
                 )
 
-            # Content changed — report as created or updated
+            # Content changed — commit the temp file
+            self._commit_temp(pipeline, resource, ctx)
+
             status = SyncStatus.CREATED if local_hash is None else SyncStatus.UPDATED
             await self._events.emit(
                 ResourceWritten(
                     resource_name=resource.name,
                     path=str(resource.path),
                     bytes_written=(
-                        write_result.bytes_written if pipeline.sink else 0
+                        write_result.bytes_written if write_result else 0
                     ),
                 )
             )
@@ -135,6 +141,8 @@ class PipelineExecutor:
             )
 
         except Exception as e:
+            # Ensure temp file is cleaned up on error
+            self._discard_temp(pipeline, resource, ctx)
             stage = list(stage_times.keys())[-1] if stage_times else "unknown"
             await self._events.emit(ResourceFailed(
                 resource_name=resource.name,
@@ -175,18 +183,88 @@ class PipelineExecutor:
         )
 
     @staticmethod
-    def _undo_write(resource: Resource) -> None:
-        """Delete the file that was written but has the same hash.
+    def _commit_temp(pipeline: Pipeline, resource: Resource, ctx: PipelineContext) -> None:
+        """Commit the temp file to the target path.
 
-        This is the 'write then maybe undo' approach: we always write,
-        then delete if the content hasn't changed. This preserves the
-        streaming pipeline while still supporting SKIPPED status.
+        Only LocalSink supports two-phase commit; other sinks (e.g. drain)
+        just pass through.
         """
-        target = Path(resource.path)
-        try:
-            target.unlink(missing_ok=True)
-            _LOGGER.debug("Undid write for '%s' (hash matched)", resource.name)
-        except OSError:
-            _LOGGER.warning(
-                "Could not undo write for '%s': %s", resource.name, target
-            )
+        sink = pipeline.sink
+        if isinstance(sink, LocalSink):
+            sink.commit()
+        else:
+            _LOGGER.debug("Non-local sink '%s' — no commit needed", type(sink).__name__)
+
+    @staticmethod
+    def _discard_temp(pipeline: Pipeline, resource: Resource, ctx: PipelineContext) -> None:
+        """Discard the temp file if any.
+
+        Safe to call even if no temp file exists (e.g. drain sink).
+        """
+        sink = pipeline.sink
+        if isinstance(sink, LocalSink):
+            sink.discard()
+
+
+def _extract_stage_name(stage_fn) -> str:
+    """Extract a human-readable name from a stage function.
+
+    For bound methods (e.g. validator_instance._validate), returns the
+    class name (e.g. 'EmptyValidator'). For regular functions, returns
+    the function name.
+    """
+    # Bound method: extract the owning class name
+    if hasattr(stage_fn, "__self__") and hasattr(stage_fn.__self__, "__class__"):
+        return type(stage_fn.__self__).__name__
+    # Regular function
+    if hasattr(stage_fn, "__name__"):
+        return stage_fn.__name__
+    # Fallback
+    return getattr(type(stage_fn), "__name__", str(type(stage_fn)))
+
+
+class _TimedStreamWrapper:
+    """Wraps a stream with a stage function, measuring actual execution time.
+
+    Validator/transform functions are async generators — they don't
+    execute until the stream is consumed. This wrapper measures the
+    actual time spent processing chunks in the wrapped stage.
+    """
+
+    def __init__(
+        self,
+        stream: Stream,
+        stage_fn,
+        resource: Resource,
+        ctx: PipelineContext,
+        stage_name: str,
+        stage_times: dict[str, float],
+    ) -> None:
+        self._stream = stream
+        self._stage_fn = stage_fn
+        self._resource = resource
+        self._ctx = ctx
+        self._stage_name = stage_name
+        self._stage_times = stage_times
+        self._fn_name = _extract_stage_name(stage_fn)
+        # Cache the async generator so multiple __aiter__ calls (e.g. when
+        # HtmlErrorValidator iterates the same stream in two phases: first to
+        # fill the head buffer, then to forward the rest) share the same
+        # underlying generator. Without this, the second __aiter__ call would
+        # create a fresh generator over an already-exhausted underlying stream.
+        self._cached_aiter: Stream | None = None
+
+    def __aiter__(self) -> Stream:
+        if self._cached_aiter is None:
+            self._cached_aiter = self._aiter_impl()
+        return self._cached_aiter
+
+    async def _aiter_impl(self) -> Stream:
+        t0 = time.monotonic()
+        processed = self._stage_fn(self._stream, self._resource, self._ctx)
+        # Measure time spent consuming the processed stream
+        async for chunk in processed:
+            yield chunk
+        elapsed = (time.monotonic() - t0) * 1000
+        key = f"{self._stage_name}.{self._fn_name}"
+        self._stage_times[key] = elapsed

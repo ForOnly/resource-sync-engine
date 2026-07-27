@@ -103,6 +103,7 @@ class SyncReport(BaseModel):
                     "remote_hash": str(r.remote_hash) if r.remote_hash else None,
                     "error_message": r.error_message,
                     "dry_run": r.dry_run,
+                    "stage_times_ms": r.stage_times if r.stage_times else None,
                 }
                 for r in self.results
             ],

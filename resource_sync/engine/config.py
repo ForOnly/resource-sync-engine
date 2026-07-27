@@ -35,15 +35,24 @@ class Config:
 
     @property
     def max_concurrency(self) -> int:
-        return int(self.engine_config.get("max_concurrency", 1))
+        raw = self.engine_config.get("max_concurrency", 1)
+        try:
+            val = int(raw)
+            return max(1, val)
+        except (TypeError, ValueError):
+            return 1
 
     @property
     def sink_name(self) -> str:
-        return str(self.engine_config.get("sink", "local"))
+        raw = self.engine_config.get("sink", "local")
+        return str(raw) if raw else "local"
 
     @property
     def observer_configs(self) -> list[dict[str, Any]]:
-        return list(self.engine_config.get("observers", []))
+        raw = self.engine_config.get("observers", [])
+        if isinstance(raw, list):
+            return [dict(item) for item in raw if isinstance(item, dict)]
+        return []
 
 
 def load_config(

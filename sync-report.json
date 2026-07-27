@@ -1,26 +1,44 @@
 {
-  "run_id": "83ad0852a57b",
-  "timestamp": "2026-07-27T06:12:36.627095+00:00",
+  "run_id": "3f3326bcca10",
+  "timestamp": "2026-07-27T07:01:16.233536+00:00",
   "dry_run": false,
   "summary": {
-    "created": 2
+    "skipped": 2
   },
   "results": [
     {
       "resource_name": "AI.list",
-      "status": "created",
-      "local_hash": null,
+      "status": "skipped",
+      "local_hash": "sha256:b9526ae00f707b6622bd4b630f20481673d3af9eb086ae1281fbff5fd54fd6d5",
       "remote_hash": "sha256:b9526ae00f707b6622bd4b630f20481673d3af9eb086ae1281fbff5fd54fd6d5",
       "error_message": null,
-      "dry_run": false
+      "dry_run": false,
+      "stage_times_ms": {
+        "local_hash": 0.0,
+        "fetch": 625.0,
+        "validate.EmptyValidator": 0.0,
+        "validate.HtmlErrorValidator": 0.0,
+        "validate.SizeValidator": 0.0,
+        "sink": 0.0,
+        "compare": 0.0
+      }
     },
     {
       "resource_name": "ChinaIp.list",
-      "status": "created",
-      "local_hash": null,
+      "status": "skipped",
+      "local_hash": "sha256:bb62220ae6ba9ee37421d0ba8ec734dc9d71af2cc8cd7209685f0d4939d7cca2",
       "remote_hash": "sha256:bb62220ae6ba9ee37421d0ba8ec734dc9d71af2cc8cd7209685f0d4939d7cca2",
       "error_message": null,
-      "dry_run": false
+      "dry_run": false,
+      "stage_times_ms": {
+        "local_hash": 15.999999945051968,
+        "fetch": 592.9999999934807,
+        "validate.EmptyValidator": 109.99999998603016,
+        "validate.HtmlErrorValidator": 109.99999998603016,
+        "validate.SizeValidator": 109.99999998603016,
+        "sink": 109.99999998603016,
+        "compare": 0.0
+      }
     }
   ]
 }
