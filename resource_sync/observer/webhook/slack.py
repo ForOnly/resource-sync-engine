@@ -12,7 +12,7 @@ from resource_sync.plugin.registry import register_webhook_platform
 class SlackPlatform(WebhookPlatformBase):
     """Slack Incoming Webhook platform.
 
-    Messages use Slack's ``text`` field with markdown-style formatting.
+    Messages use Slack's ``text`` field with mrkdwn-style formatting.
     """
 
     name: ClassVar[str] = "slack"
@@ -20,4 +20,5 @@ class SlackPlatform(WebhookPlatformBase):
     def _make_message(self, text: str, title: str) -> dict[str, Any]:
         return {
             "text": f"*{title}*\n{text}",
+            "mrkdwn": True,
         }

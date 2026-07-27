@@ -21,6 +21,6 @@ class WeChatWorkPlatform(WebhookPlatformBase):
         return {
             "msgtype": "markdown",
             "markdown": {
-                "content": f"## {title}\n{text}",
+                "content": f"# {title}\n{text}\n---\nResource Sync Engine",
             },
         }

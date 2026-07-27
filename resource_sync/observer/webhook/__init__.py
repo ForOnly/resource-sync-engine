@@ -119,9 +119,12 @@ class WebhookObserver:
         # Delegate header building to the platform plugin
         headers = self._platform_impl.build_headers(payload)
 
+        # Get the request URL (platform may add signing query params)
+        request_url = self._platform_impl.get_url()
+
         # Send the webhook request
         try:
-            response = await self._client.post(self._url, json=payload, headers=headers)
+            response = await self._client.post(request_url, json=payload, headers=headers)
             response.raise_for_status()
             _LOGGER.debug(
                 "Webhook sent (%s/%s) — %s",

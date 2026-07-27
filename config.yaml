@@ -52,6 +52,7 @@ engine:
   #   secret: "${WEBHOOK_SECRET}"
   #
   observers:
+    - type: log
     - type: webhook
       platform: dingtalk                  # dingtalk, wechat_work, slack, or generic
       url: "${DINGTALK_WEBHOOK_URL}"      # Webhook URL (supports env vars)
@@ -59,6 +60,7 @@ engine:
       events: # Optional: event filter (default: all)
         - SyncCompleted
         - ResourceFailed
+#        - ResourceSkipped
 #
 #   - type: webhook
 #     platform: slack

@@ -80,12 +80,13 @@ class TestPlatformFormats:
     """Platform-specific message formatting, tested via platform plugins."""
 
     def test_slack_format(self) -> None:
-        """Slack messages should use ``text`` field."""
+        """Slack messages should use ``text`` field with mrkdwn."""
         platform = SlackPlatform(url="https://hooks.slack.com/xxx")
         event = SyncCompleted(summary="5 resources synced")
         payload = platform.build_payload(event)
         assert payload is not None
         assert "text" in payload
+        assert "mrkdwn" in payload
         assert "Sync Completed" in payload["text"]
 
     def test_slack_resource_failed(self) -> None:
@@ -140,41 +141,59 @@ class TestPlatformFormats:
 
 
 class TestDingTalkSigning:
-    """DingTalk HMAC-SHA256 signing, tested via the platform plugin."""
+    """DingTalk HMAC-SHA256 signing, tested via the platform plugin.
 
-    def test_signing_headers_present(self) -> None:
-        """DingTalk with secret should include timestamp and sign headers."""
+    DingTalk requires the signature to be passed as URL query parameters
+    (``timestamp`` and ``sign``), not as HTTP headers.
+    """
+
+    def test_signing_url_has_timestamp_and_sign(self) -> None:
+        """DingTalk with secret should add timestamp and sign to the URL."""
         platform = DingTalkPlatform(
-            url="https://oapi.dingtalk.com/robot/send?token=xxx",
+            url="https://oapi.dingtalk.com/robot/send?access_token=xxx",
             secret="my-secret",
         )
-        headers = platform.build_headers({})
-        assert "timestamp" in headers
-        assert "sign" in headers
-        assert headers["Content-Type"] == "application/json"
+        signed_url = platform.get_url()
+        assert "timestamp=" in signed_url
+        assert "sign=" in signed_url
+        # Original URL params should be preserved
+        assert "access_token=xxx" in signed_url
 
     def test_no_secret_no_signing(self) -> None:
-        """Without a secret, no signing headers should be added."""
+        """Without a secret, the URL should be returned unchanged."""
+        platform = DingTalkPlatform(
+            url="https://oapi.dingtalk.com/robot/send?access_token=xxx",
+        )
+        assert platform.get_url() == "https://oapi.dingtalk.com/robot/send?access_token=xxx"
+
+    def test_signing_no_secret_headers_unchanged(self) -> None:
+        """Without a secret, headers should not contain signing fields."""
         platform = GenericPlatform(url="https://hooks.example.com/webhook")
         headers = platform.build_headers({})
         assert "timestamp" not in headers
         assert "sign" not in headers
         assert headers["Content-Type"] == "application/json"
 
-    def test_signing_format(self) -> None:
-        """The sign header should be a valid base64 string."""
+    def test_signing_signature_format(self) -> None:
+        """The sign parameter in the URL should be a valid base64 SHA-256."""
         import base64
+        from urllib.parse import parse_qs, urlparse
 
         platform = DingTalkPlatform(
-            url="https://oapi.dingtalk.com/robot/send?token=xxx",
+            url="https://oapi.dingtalk.com/robot/send?access_token=xxx",
             secret="my-secret",
         )
-        headers = platform.build_headers({})
+        signed_url = platform.get_url()
+        # Extract the sign parameter from the URL
+        parsed = urlparse(signed_url)
+        params = parse_qs(parsed.query)
+        assert "sign" in params
+        sign_value = params["sign"][0]
         try:
-            decoded = base64.b64decode(headers["sign"])
+            decoded = base64.b64decode(sign_value)
             assert len(decoded) == 32  # SHA-256 is 32 bytes
         except Exception:
-            pytest.fail("Sign header is not valid base64")
+            pytest.fail("Sign parameter is not valid base64")
 
 
 class TestEventFilter:

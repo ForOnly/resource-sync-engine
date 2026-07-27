@@ -63,8 +63,8 @@ jobs:
           # OUTPUT_DIR: ${{ secrets.OUTPUT_DIR }}
 
           # Webhook notification environment variables (uncomment if using webhook observers):
-          # DINGTALK_WEBHOOK_URL: ${{ secrets.DINGTALK_WEBHOOK_URL }}
-          # DINGTALK_SECRET: ${{ secrets.DINGTALK_SECRET }}
+          DINGTALK_WEBHOOK_URL: ${{ secrets.DINGTALK_WEBHOOK_URL }}
+          DINGTALK_SECRET: ${{ secrets.DINGTALK_SECRET }}
           # SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           # WECHAT_WEBHOOK_URL: ${{ secrets.WECHAT_WEBHOOK_URL }}
           # WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}

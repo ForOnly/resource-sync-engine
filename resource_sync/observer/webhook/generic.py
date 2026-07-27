@@ -21,9 +21,16 @@ class GenericPlatform(WebhookPlatformBase):
     name: ClassVar[str] = "generic"
 
     def _make_message(self, text: str, title: str) -> dict[str, Any]:
+        # Strip the first line (title + emoji) from text for the message
+        # The first line is the header, remaining lines are the body
+        lines = text.split("\n")
+        # Filter out empty lines for the body
+        body_lines = [l for l in lines[1:] if l.strip()]
         return {
-            "event": title.lower().replace(" ", "_"),
+            "event": title.split()[-1].lower().replace(" ", "_")
+            if " " in title
+            else title.lower().replace(" ", "_"),
             "title": title,
-            "message": text,
+            "message": "\n".join(body_lines) if body_lines else "",
             "timestamp": time.time(),
         }

@@ -24,12 +24,22 @@ from resource_sync.domain.events import Event
 class WebhookPlatform(Protocol):
     """Protocol for a webhook platform strategy.
 
-    Each platform handles its own message formatting (``build_payload``)
-    and HTTP headers (``build_headers``), including signing logic.
+    Each platform handles its own message formatting (``build_payload``),
+    HTTP headers (``build_headers``), and URL computation (``get_url``),
+    including signing logic.
     """
 
     name: ClassVar[str]
     """Human-readable platform identifier (e.g. ``"dingtalk"``)."""
+
+    def get_url(self) -> str:
+        """Return the webhook URL to send the request to.
+
+        The default implementation returns the URL passed at construction.
+        Platforms that need per-request signing (e.g. DingTalk with HMAC)
+        override this to append query parameters.
+        """
+        ...
 
     def build_payload(self, event: Event) -> dict[str, Any] | None:
         """Build the JSON payload for the webhook request.
@@ -62,6 +72,15 @@ class WebhookPlatformBase:
         self._secret = secret
 
     # ─── To be overridden ───
+
+    def get_url(self) -> str:
+        """Return the webhook URL for the request.
+
+        The default returns the URL passed at construction.
+        Override in subclasses (e.g. DingTalk with signing) to append
+        per-request query parameters.
+        """
+        return self._url
 
     def _make_message(self, text: str, title: str) -> dict[str, Any]:
         """Build the platform-specific message payload from text and title.
@@ -114,30 +133,108 @@ class WebhookPlatformBase:
 
     # ─── Format helpers ───
 
+    # Status icons mapped to event types
+    _ICONS: dict[str, str] = {
+        "SyncStarted": "\U0001f504",         # 🔄
+        "SyncCompleted": "✅",           # ✅
+        "ResourceFailed": "❌",          # ❌
+        "ResourceWritten": "\U0001f4dd",     # 📝
+        "ResourceSkipped": "⏭️",    # ⏭️
+        "ResourceFetchCompleted": "\U0001f4e5", # 📥
+    }
+
+    @staticmethod
+    def _format_key_value(key: str, value: object, width: int = 10) -> str:
+        """Format a key-value pair with aligned columns.
+
+        ``width`` controls the key column width for alignment.
+        """
+        return f"  {key:<{width}} {value}"
+
     def _format_sync_started(self, event: SyncStarted) -> dict[str, Any]:
-        text = f"Sync Started: {event.config_summary}"
-        return self._make_message(text, title="Sync Started")
+        icon = self._ICONS.get("SyncStarted", "")
+        lines = [
+            f"{icon} Sync Started",
+            "",
+            self._format_key_value("Resources", event.config_summary),
+        ]
+        return self._make_message("\n".join(lines), title=f"{icon} Sync Started")
 
     def _format_sync_completed(self, event: SyncCompleted) -> dict[str, Any]:
-        text = f"Sync Completed: {event.summary}"
-        return self._make_message(text, title="Sync Completed")
+        icon = self._ICONS.get("SyncCompleted", "")
+        # Try to parse the summary dict for detailed breakdown
+        summary_text = event.summary
+        lines = [f"{icon} Sync Completed", ""]
+        if summary_text.startswith("{") and summary_text.endswith("}"):
+            try:
+                data = eval(summary_text)  # safe: dict literal from our own code
+                if isinstance(data, dict):
+                    for key in ("created", "updated", "skipped", "error"):
+                        val = data.get(key, 0)
+                        lines.append(self._format_key_value(key.capitalize(), val))
+                    changed = data.get("created", 0) + data.get("updated", 0)
+                    lines.append(self._format_key_value("Changed", changed))
+                else:
+                    lines.append(f"  {summary_text}")
+            except Exception:
+                lines.append(f"  {summary_text}")
+        else:
+            lines.append(f"  {summary_text}")
+        return self._make_message("\n".join(lines), title=f"{icon} Sync Completed")
 
     def _format_resource_failed(self, event: ResourceFailed) -> dict[str, Any]:
-        text = f"Resource Failed: {event.resource_name}\nError: {event.error}\nStage: {event.stage}"
-        return self._make_message(text, title="Resource Failed")
+        icon = self._ICONS.get("ResourceFailed", "")
+        lines = [
+            f"{icon} Resource Failed",
+            "",
+            self._format_key_value("Resource", event.resource_name),
+            self._format_key_value("Stage", event.stage),
+            self._format_key_value("Error", event.error),
+        ]
+        return self._make_message("\n".join(lines), title=f"{icon} Resource Failed")
 
     def _format_resource_written(self, event: ResourceWritten) -> dict[str, Any]:
-        text = (
-            f"Resource Written: {event.resource_name}\n"
-            f"Path: {event.path}\n"
-            f"Bytes: {event.bytes_written}"
-        )
-        return self._make_message(text, title="Resource Updated")
+        icon = self._ICONS.get("ResourceWritten", "")
+        # Format bytes to human-readable
+        bytes_val = event.bytes_written
+        if bytes_val >= 1024 * 1024:
+            size_str = f"{bytes_val / (1024 * 1024):.1f} MB"
+        elif bytes_val >= 1024:
+            size_str = f"{bytes_val / 1024:.1f} KB"
+        else:
+            size_str = f"{bytes_val} bytes"
+        lines = [
+            f"{icon} Resource Updated",
+            "",
+            self._format_key_value("Resource", event.resource_name),
+            self._format_key_value("Path", event.path),
+            self._format_key_value("Size", size_str),
+        ]
+        return self._make_message("\n".join(lines), title=f"{icon} Resource Updated")
 
     def _format_resource_skipped(self, event: ResourceSkipped) -> dict[str, Any]:
-        text = f"Resource Skipped: {event.resource_name} (unchanged)"
-        return self._make_message(text, title="Resource Skipped")
+        icon = self._ICONS.get("ResourceSkipped", "")
+        lines = [
+            f"{icon} Resource Skipped",
+            "",
+            self._format_key_value("Resource", event.resource_name),
+            self._format_key_value("Reason", "No changes detected"),
+        ]
+        return self._make_message("\n".join(lines), title=f"{icon} Resource Skipped")
 
     def _format_resource_fetch_completed(self, event: ResourceFetchCompleted) -> dict[str, Any]:
-        text = f"Fetched: {event.resource_name} ({event.bytes_downloaded} bytes)"
-        return self._make_message(text, title="Resource Fetched")
+        icon = self._ICONS.get("ResourceFetchCompleted", "")
+        bytes_val = event.bytes_downloaded
+        if bytes_val >= 1024 * 1024:
+            size_str = f"{bytes_val / (1024 * 1024):.1f} MB"
+        elif bytes_val >= 1024:
+            size_str = f"{bytes_val / 1024:.1f} KB"
+        else:
+            size_str = f"{bytes_val} bytes"
+        lines = [
+            f"{icon} Resource Fetched",
+            "",
+            self._format_key_value("Resource", event.resource_name),
+            self._format_key_value("Size", size_str),
+        ]
+        return self._make_message("\n".join(lines), title=f"{icon} Resource Fetched")
