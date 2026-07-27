@@ -7,7 +7,7 @@ from typing import Any, ClassVar
 
 from resource_sync.domain.events import (
     Event, ResourceFailed, ResourceFetchCompleted, ResourceFetchStarted,
-    ResourceSkipped, ResourceWritten, SyncCompleted, SyncStarted,
+    ResourceRemoteUnchanged, ResourceSkipped, ResourceWritten, SyncCompleted, SyncStarted,
 )
 
 from resource_sync.plugin.registry import register_observer
@@ -38,5 +38,7 @@ class LogObserver:
             _LOGGER.info("Written: %s → %s (%d bytes)", event.resource_name, event.path, event.bytes_written)
         elif t is ResourceSkipped:
             _LOGGER.info("Skipped: %s", event.resource_name)
+        elif t is ResourceRemoteUnchanged:
+            _LOGGER.info("Remote unchanged (304): %s", event.resource_name)
         elif t is ResourceFailed:
             _LOGGER.error("Failed: %s (stage=%s): %s", event.resource_name, event.stage, event.error)

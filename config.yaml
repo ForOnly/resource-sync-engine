@@ -9,7 +9,8 @@
 #   5. If the hash matches, skip it.
 #
 # All ${VARIABLE} references are replaced with environment variables
-# at runtime.
+# at runtime, making this compatible with GitHub Actions secrets and
+# other CI/CD systems.
 
 resources:
   # ──────────────────────────────────────────────
@@ -25,3 +26,51 @@ resources:
     path: "data/clash/rules/ChinaIp.list"
     algorithm: "sha256"
 
+# ──────────────────────────────────────────────
+# Engine configuration (optional)
+# ──────────────────────────────────────────────
+#
+engine:
+  #   # Max concurrency for parallel downloads (default: 1)
+  max_concurrency: 4
+
+  # Sink type — "local" (default) or "git"
+  #  sink: local
+
+  # ── Event observers ─────────────────────
+  # Register observers to receive notifications about sync events.
+  # Supports two types: "log" (built-in) and "webhook".
+  #
+  # The "webhook" observer supports pluggable platforms (DingTalk,
+  # WeChat Work, Slack, Generic). Each platform is a separate plugin
+  # that handles its own message format and signing logic.
+  #
+  # All string values support ${ENV_VAR} substitution, making them
+  # compatible with GitHub Actions secrets:
+  #
+  #   url: "${WEBHOOK_URL}"
+  #   secret: "${WEBHOOK_SECRET}"
+  #
+  observers:
+    - type: webhook
+      platform: dingtalk                  # dingtalk, wechat_work, slack, or generic
+      url: "${DINGTALK_WEBHOOK_URL}"      # Webhook URL (supports env vars)
+      secret: "${DINGTALK_SECRET}"        # Optional: HMAC-SHA256 signing secret
+      events: # Optional: event filter (default: all)
+        - SyncCompleted
+        - ResourceFailed
+#
+#   - type: webhook
+#     platform: slack
+#     url: "${SLACK_WEBHOOK_URL}"
+#     events:
+#       - SyncCompleted
+#
+#   - type: webhook
+#     platform: wechat_work
+#     url: "${WECHAT_WEBHOOK_URL}"
+#
+#   - type: webhook
+#     platform: generic
+#     url: "https://example.com/hooks/sync"
+#     secret: "${WEBHOOK_SECRET}"

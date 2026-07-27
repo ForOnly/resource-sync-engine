@@ -7,13 +7,22 @@
 # Required secrets:
 #   - None by default. If your config references ${TOKEN} or similar
 #     env vars, add them as GitHub Actions secrets and pass them below.
+#
+# Webhook notification secrets (if using webhook observers):
+#   - DINGTALK_WEBHOOK_URL: DingTalk robot webhook URL
+#   - DINGTALK_SECRET:      DingTalk HMAC-SHA256 signing secret
+#   - SLACK_WEBHOOK_URL:    Slack Incoming Webhook URL
+#   - WECHAT_WEBHOOK_URL:   WeChat Work robot webhook URL
+#   - WEBHOOK_SECRET:       Generic webhook signing secret
+#
+# See config.yaml for the corresponding observer configuration.
 
 name: Resource Sync
 
 on:
   schedule:
     # Every 6 hours at minute 0
-    - cron: "0 */6 * * *"
+    - cron: "0 18 * * *"
   workflow_dispatch:
   # Allow manual trigger from the GitHub Actions tab
 
@@ -52,4 +61,12 @@ jobs:
           # API_TOKEN: ${{ secrets.API_TOKEN }}
           # HOST: ${{ secrets.HOST }}
           # OUTPUT_DIR: ${{ secrets.OUTPUT_DIR }}
+
+          # Webhook notification environment variables (uncomment if using webhook observers):
+          # DINGTALK_WEBHOOK_URL: ${{ secrets.DINGTALK_WEBHOOK_URL }}
+          # DINGTALK_SECRET: ${{ secrets.DINGTALK_SECRET }}
+          # SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          # WECHAT_WEBHOOK_URL: ${{ secrets.WECHAT_WEBHOOK_URL }}
+          # WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
+
           GITHUB_ACTIONS: "true"

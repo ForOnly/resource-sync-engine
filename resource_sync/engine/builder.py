@@ -2,18 +2,24 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from resource_sync.domain.models import Resource
 from resource_sync.domain.pipeline import Pipeline
 from resource_sync.domain.stream import StreamSink, StreamSource, StreamTransformer
 from resource_sync.engine.config import Config
+from resource_sync.fetcher.cache import EtagCache
+from resource_sync.fetcher.http import set_etag_cache
 from resource_sync.plugin.registry import PluginRegistry
 
 
 class PipelineBuilder:
     """Assembles a Pipeline for each resource based on config and registry."""
 
-    def __init__(self, registry: PluginRegistry) -> None:
+    def __init__(self, registry: PluginRegistry, etag_cache: EtagCache | None = None) -> None:
         self._registry = registry
+        if etag_cache is not None:
+            set_etag_cache(etag_cache)
 
     def build(self, resource: Resource, config: Config) -> Pipeline:
         source = self._resolve_source(resource)

@@ -88,6 +88,8 @@ class FetchResult:
     etag: str | None = None
     last_modified: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
+    not_modified: bool = False
+    """True when the server returned 304 Not Modified (ETag/Last-Modified match)."""
 
 
 @dataclass(frozen=True)
@@ -120,13 +122,27 @@ class StreamSource(Protocol):
 
 
 class StreamSink(Protocol):
-    """Protocol for a data sink — consumes a stream."""
+    """Protocol for a data sink — consumes a stream and supports two-phase commit.
+
+    The two-phase commit pattern allows the executor to:
+    1. write()  — stream data to a temporary location
+    2. commit() — finalize (atomically move temp → target) if content changed
+    3. discard() — delete the temp data if content is unchanged or on error
+    """
     async def write(
         self,
         stream: Stream,
         resource: Resource,
         ctx: PipelineContext,
     ) -> WriteResult: ...
+
+    def commit(self) -> bool:
+        """Commit the pending write. Returns True on success."""
+        ...
+
+    def discard(self) -> bool:
+        """Discard the pending write. Returns True on success."""
+        ...
 
 
 # ─── Utilities ───

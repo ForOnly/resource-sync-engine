@@ -31,6 +31,7 @@ class GitSink:
 
     def __init__(self, repo_root: Path | None = None) -> None:
         self.repo_root = repo_root
+        self._local = LocalSink()
 
     @classmethod
     def configure(cls, resource: Resource) -> StreamSink:
@@ -40,8 +41,15 @@ class GitSink:
         self, stream: Stream, resource: Resource, ctx: PipelineContext
     ) -> WriteResult:
         """Write the stream to the local file. Does NOT commit."""
-        local = LocalSink()
-        return await local.write(stream, resource, ctx)
+        return await self._local.write(stream, resource, ctx)
+
+    def commit(self) -> bool:
+        """Commit the pending write via LocalSink."""
+        return self._local.commit()
+
+    def discard(self) -> bool:
+        """Discard the pending write via LocalSink."""
+        return self._local.discard()
 
     def commit_all(
         self,

@@ -35,6 +35,14 @@ class DrainSink:
             total += len(chunk)
         return WriteResult(path=str(resource.path), bytes_written=total)
 
+    def commit(self) -> bool:
+        """No-op: drain sink has nothing to commit."""
+        return True
+
+    def discard(self) -> bool:
+        """No-op: drain sink has nothing to discard."""
+        return True
+
 
 def create_drain_sink() -> StreamSink:
     """Factory function to create a drain sink."""

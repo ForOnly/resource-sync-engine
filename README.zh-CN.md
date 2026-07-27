@@ -18,6 +18,7 @@
 - 📊 **同步报告** — 生成结构化的 `sync-report.json`
 - 🤖 **GitHub Actions** — 定时运行，自动提交和推送
 - 📦 **无变化不提交** — 无资源变更时跳过 Git 提交
+- 🔔 **Webhook 通知** — 支持钉钉、Slack、企业微信及自定义 Webhook 平台（插件化架构）
 
 ## 快速开始
 
@@ -113,6 +114,83 @@ API_HOST=api.example.com DATA_DIR=./output API_TOKEN=secret123 \
 ```
 
 > **注意**：如果引用的环境变量未设置，引擎会报错退出。
+
+### Webhook 通知
+
+引擎支持通过 Webhook 将事件通知发送到外部聊天平台。在 `engine.observers` 下配置：
+
+```yaml
+engine:
+  observers:
+    # 内置日志记录器（始终生效）
+    - type: log
+
+    # Webhook 通知 — 支持多个平台
+    - type: webhook
+      platform: dingtalk
+      url: "${DINGTALK_WEBHOOK_URL}"
+      secret: "${DINGTALK_SECRET}"          # 可选：签名密钥
+      events:                               # 可选：事件过滤
+        - SyncCompleted
+        - ResourceFailed
+
+    - type: webhook
+      platform: slack
+      url: "${SLACK_WEBHOOK_URL}"
+```
+
+#### 支持的平台
+
+| 平台 | 配置值 | 消息格式 | 认证/签名 |
+|---|---|---|---|
+| **钉钉** | `dingtalk` | Markdown | HMAC-SHA256（可选 `secret`） |
+| **企业微信** | `wechat_work` | Markdown | 无 |
+| **Slack** | `slack` | Text（类 Markdown） | 无 |
+| **通用** | `generic` | JSON (`event`, `title`, `message`, `timestamp`) | 无 |
+
+#### 事件过滤
+
+每个 Webhook 观察者可以过滤需要通知的事件类型：
+
+| 事件 | 说明 |
+|---|---|
+| `SyncStarted` | 同步开始 |
+| `SyncCompleted` | 同步完成（含摘要） |
+| `ResourceFetchStarted` | 开始下载资源 |
+| `ResourceFetchCompleted` | 下载完成 |
+| `ResourceWritten` | 资源文件已写入/更新 |
+| `ResourceSkipped` | 资源已跳过（未变更） |
+| `ResourceFailed` | 资源处理失败 |
+
+#### 自定义平台
+
+Webhook 平台采用插件化架构。添加自定义平台只需三步：
+
+1. 创建实现 `WebhookPlatform` 协议（或继承 `WebhookPlatformBase`）的类
+2. 使用 `@register_webhook_platform("my_platform")` 装饰
+3. 确保模块被导入（在 webhook 包的 `__init__.py` 中添加）
+
+```python
+from resource_sync.observer.webhook.base import WebhookPlatformBase
+from resource_sync.plugin.registry import register_webhook_platform
+
+@register_webhook_platform("my_platform")
+class MyPlatform(WebhookPlatformBase):
+    name = "my_platform"
+
+    def _make_message(self, text: str, title: str) -> dict:
+        return {"custom": True, "text": text, "title": title}
+```
+
+然后在 `config.yaml` 中使用：
+
+```yaml
+engine:
+  observers:
+    - type: webhook
+      platform: my_platform
+      url: "${MY_WEBHOOK_URL}"
+```
 
 ## 使用方式
 
@@ -319,6 +397,16 @@ resource-sync/
 │   │   ├── drain.py              # 无操作 drain sink（dry-run 模式）
 │   │   ├── git.py                # Git 感知 sink（写入 + 提交）
 │   │   └── local.py              # 本地文件 sink（两阶段提交）
+│   ├── observer/                 # 事件观察者插件
+│   │   ├── __init__.py           #  观察者发现
+│   │   ├── log.py                #  LogObserver — 日志输出
+│   │   └── webhook/              #  Webhook 观察者包
+│   │       ├── __init__.py       #   WebhookObserver — 调度器
+│   │       ├── base.py           #   WebhookPlatform 协议 + 基类
+│   │       ├── dingtalk.py       #   钉钉平台插件
+│   │       ├── slack.py          #   Slack 平台插件
+│   │       ├── wechat_work.py    #   企业微信平台插件
+│   │       └── generic.py        #   通用 JSON 平台插件
 │   ├── transform/                # 流转换插件
 │   │   ├── identity.py           # 恒等转换（透传，参考实现）
 │   │   └── ...                   # 在此添加自定义转换器
@@ -355,11 +443,12 @@ __main__.py → cli/app.py → engine/config.py → domain/models.py（叶子节
 
 - **domain/** — 纯领域模型（Pydantic）、事件、管道声明、流类型协议。无 I/O、无副作用。
 - **engine/** — 配置加载、管道构建、执行、编排。引擎从注册的插件组装管道并运行。
-- **plugin/** — 基于装饰器的插件注册表。五种插件类型：fetcher、validator、transform、sink、observer。
+- **plugin/** — 基于装饰器的插件注册表。六种插件类型：fetcher、validator、transform、sink、observer、webhook_platform。
 - **fetcher/** — 数据源插件。每个 fetcher 处理一个或多个 URL 协议（如 `http`、`https`）。
 - **validator/** — 内容安全检查，应用于每个下载的资源。
 - **transform/** — 流转换（解压缩、解密、过滤等）。
 - **sink/** — 输出目标。本地文件系统、Git 感知写入器、drain（dry-run）。
+- **observer/** — 事件监听器。内置 LogObserver 和可插拔平台的 WebhookObserver（钉钉、Slack、企业微信、通用）。
 - **eventbus/** — 内存事件总线，支持 subscribe/emit 模式。
 - **cli/** — 参数解析与应用启动。
 

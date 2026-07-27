@@ -64,6 +64,11 @@ class ResourceSkipped(Event):
     resource_name: str = ""
 
 
+class ResourceRemoteUnchanged(Event):
+    """Emitted when the server returns 304 Not Modified (ETag/Last-Modified match)."""
+    resource_name: str = ""
+
+
 class ResourceFailed(Event):
     resource_name: str = ""
     error: str = ""

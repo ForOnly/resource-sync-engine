@@ -13,6 +13,7 @@ from resource_sync.domain.events import (
     ResourceFetchCompleted,
     ResourceFetchStarted,
     ResourceHashCompared,
+    ResourceRemoteUnchanged,
     ResourceSkipped,
     ResourceWritten,
 )
@@ -26,7 +27,6 @@ from resource_sync.domain.stream import (
     tee_stream,
 )
 from resource_sync.eventbus.memory import EventBus
-from resource_sync.sink.local import LocalSink
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -65,6 +65,21 @@ class PipelineExecutor:
                 resource_name=resource.name, bytes_downloaded=fetch_result.content_length or 0,
             ))
             stream = fetch_result.stream
+
+            # Check for 304 Not Modified (ETag/Last-Modified cache hit)
+            if fetch_result.not_modified:
+                await self._events.emit(
+                    ResourceRemoteUnchanged(resource_name=resource.name)
+                )
+                await self._events.emit(ResourceSkipped(resource_name=resource.name))
+                return ResourceResult(
+                    resource_name=resource.name,
+                    status=SyncStatus.SKIPPED,
+                    local_hash=local_hash,
+                    remote_hash=None,
+                    stage_times=stage_times,
+                    dry_run=ctx.config.get("dry_run", False),
+                )
 
             # Stage 2-3: Validate + Transform (wrap with timing)
             for stage_name, stages in [
@@ -186,23 +201,22 @@ class PipelineExecutor:
     def _commit_temp(pipeline: Pipeline, resource: Resource, ctx: PipelineContext) -> None:
         """Commit the temp file to the target path.
 
-        Only LocalSink supports two-phase commit; other sinks (e.g. drain)
-        just pass through.
+        Delegates to the sink's commit() method. All sinks support
+        two-phase commit via the StreamSink protocol.
         """
         sink = pipeline.sink
-        if isinstance(sink, LocalSink):
+        if sink is not None:
             sink.commit()
-        else:
-            _LOGGER.debug("Non-local sink '%s' — no commit needed", type(sink).__name__)
 
     @staticmethod
     def _discard_temp(pipeline: Pipeline, resource: Resource, ctx: PipelineContext) -> None:
         """Discard the temp file if any.
 
-        Safe to call even if no temp file exists (e.g. drain sink).
+        Safe to call even if no temp file exists. Delegates to the
+        sink's discard() method via the StreamSink protocol.
         """
         sink = pipeline.sink
-        if isinstance(sink, LocalSink):
+        if sink is not None:
             sink.discard()
 
 

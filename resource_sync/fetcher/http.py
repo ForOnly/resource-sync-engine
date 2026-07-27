@@ -16,6 +16,7 @@ from resource_sync.domain.stream import (
     Stream,
     StreamSource,
 )
+from resource_sync.fetcher.cache import EtagCache, EtagInfo
 from resource_sync.plugin.errors import PluginExecutionError
 from resource_sync.plugin.registry import register_fetcher
 
@@ -23,6 +24,9 @@ _LOGGER = logging.getLogger(__name__)
 
 # Shared connection pool — all HttpFetcher instances share this transport
 _shared_transport: httpx.AsyncHTTPTransport | None = None
+
+# Shared ETag cache — populated by the CLI bootstrap
+_etag_cache: EtagCache | None = None
 
 
 def _get_shared_transport() -> httpx.AsyncHTTPTransport:
@@ -36,6 +40,21 @@ def _get_shared_transport() -> httpx.AsyncHTTPTransport:
             ),
         )
     return _shared_transport
+
+
+def set_etag_cache(cache: EtagCache) -> None:
+    """Set the shared ETag cache for all HttpFetcher instances.
+
+    Called during CLI bootstrap — pipeline builder injects the cache
+    once config is loaded and the repo root is known.
+    """
+    global _etag_cache
+    _etag_cache = cache
+
+
+def _get_etag_cache() -> EtagCache | None:
+    """Get the shared ETag cache, if set."""
+    return _etag_cache
 
 
 @register_fetcher(schemes=frozenset({"http", "https"}))
@@ -66,8 +85,22 @@ class HttpFetcher:
         The response stream is kept alive until the pipeline consumes it.
         Uses httpx.send() with stream=True to avoid closing the response
         on return.
+
+        If ETag caching is enabled, sends conditional request headers
+        (If-None-Match / If-Modified-Since) and returns a 304 Not Modified
+        result when the server indicates the content hasn't changed.
         """
         headers = dict(resource.headers) if resource.headers else {}
+
+        # Inject ETag/Last-Modified conditional headers if cached
+        cache = _get_etag_cache()
+        cached: EtagInfo | None = cache.get(resource.url) if cache is not None else None
+        if cached is not None:
+            if cached.etag:
+                headers.setdefault("If-None-Match", cached.etag)
+            if cached.last_modified:
+                headers.setdefault("If-Modified-Since", cached.last_modified)
+
         last_exc: Exception | None = None
 
         for attempt in range(1, self._max_retries + 1):
@@ -79,6 +112,15 @@ class HttpFetcher:
                     "GET", resource.url, headers=headers
                 )
                 response = await self._client.send(request, stream=True)
+
+                # Handle 304 Not Modified — content unchanged
+                if response.status_code == 304:
+                    await response.aclose()
+                    _LOGGER.debug("304 Not Modified for '%s'", resource.name)
+                    return FetchResult(
+                        stream=self._empty_stream(),
+                        not_modified=True,
+                    )
 
                 # Pre-check content-length to avoid large downloads
                 cl = response.headers.get("content-length")
@@ -96,6 +138,14 @@ class HttpFetcher:
                         f"HTTP {response.status_code}: "
                         f"{body[:200].decode(errors='replace')}"
                     )
+
+                # Update ETag cache on successful response
+                if cache is not None:
+                    etag = response.headers.get("etag")
+                    last_modified = response.headers.get("last-modified")
+                    if etag or last_modified:
+                        cache.set(resource.url, EtagInfo(etag=etag, last_modified=last_modified))
+                        cache.save()
 
                 return FetchResult(
                     stream=self._wrap_stream(response, ctx.cancel),
@@ -129,6 +179,14 @@ class HttpFetcher:
                 yield chunk
         finally:
             await response.aclose()
+
+    @staticmethod
+    async def _empty_stream() -> Stream:
+        """An empty stream, used for 304 Not Modified responses."""
+        # The if False branch is never reached but makes the generator
+        # syntactically valid so it yields nothing.
+        if False:  # pragma: no cover
+            yield b""
 
     async def close(self) -> None:
         """Close the underlying HTTP client."""

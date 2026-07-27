@@ -18,6 +18,7 @@ A **config-driven** resource synchronization tool. Define remote resources in a 
 - 📊 **Sync reports** — structured `sync-report.json` output
 - 🤖 **GitHub Actions** — scheduled runs with auto-commit and push
 - 📦 **No changes, no commit** — skips Git commit when nothing changed
+- 🔔 **Webhook notifications** — DingTalk, Slack, WeChat Work, or custom webhooks via plugin system
 
 ## Quick Start
 
@@ -103,6 +104,13 @@ resources:
     algorithm: "sha256"
     headers:
       Authorization: "Bearer ${API_TOKEN}"
+
+engine:
+  observers:
+    - type: webhook
+      platform: slack
+      url: "${SLACK_WEBHOOK_URL}"      # From GitHub Actions secrets
+      secret: "${WEBHOOK_SECRET}"      # Optional signing secret
 ```
 
 Run with environment variables set:
@@ -113,6 +121,83 @@ API_HOST=api.example.com DATA_DIR=./output API_TOKEN=secret123 \
 ```
 
 > **Note**: If a referenced environment variable is not set, the engine will exit with an error.
+
+### Webhook Notifications
+
+The engine can send event notifications to external chat platforms via webhooks. Configured under `engine.observers`:
+
+```yaml
+engine:
+  observers:
+    # Built-in logger (always active)
+    - type: log
+
+    # Webhook notifications — supports multiple platforms
+    - type: webhook
+      platform: dingtalk
+      url: "${DINGTALK_WEBHOOK_URL}"
+      secret: "${DINGTALK_SECRET}"          # Optional signing secret
+      events:                               # Optional event filter
+        - SyncCompleted
+        - ResourceFailed
+
+    - type: webhook
+      platform: slack
+      url: "${SLACK_WEBHOOK_URL}"
+```
+
+#### Supported Platforms
+
+| Platform | Config Value | Format | Auth/Signing |
+|---|---|---|---|
+| **DingTalk** | `dingtalk` | Markdown | HMAC-SHA256 (optional `secret`) |
+| **WeChat Work** | `wechat_work` | Markdown | None |
+| **Slack** | `slack` | Text (markdown-style) | None |
+| **Generic** | `generic` | JSON (`event`, `title`, `message`, `timestamp`) | None |
+
+#### Event Filtering
+
+Each webhook observer can filter which events trigger a notification. Available event types:
+
+| Event | Description |
+|---|---|
+| `SyncStarted` | Sync run started |
+| `SyncCompleted` | Sync run completed with summary |
+| `ResourceFetchStarted` | Download started for a resource |
+| `ResourceFetchCompleted` | Download completed |
+| `ResourceWritten` | Resource file written/updated locally |
+| `ResourceSkipped` | Resource skipped (unchanged) |
+| `ResourceFailed` | Resource processing failed with error |
+
+#### Custom Platforms
+
+Webhook platforms use a plugin-based architecture. To add a custom platform:
+
+1. Create a class implementing `WebhookPlatform` (or subclass `WebhookPlatformBase`)
+2. Decorate with `@register_webhook_platform("my_platform")`
+3. Ensure the module is imported (add it to the webhook package's `__init__.py`)
+
+```python
+from resource_sync.observer.webhook.base import WebhookPlatformBase
+from resource_sync.plugin.registry import register_webhook_platform
+
+@register_webhook_platform("my_platform")
+class MyPlatform(WebhookPlatformBase):
+    name = "my_platform"
+
+    def _make_message(self, text: str, title: str) -> dict:
+        return {"custom": True, "text": text, "title": title}
+```
+
+Then use it in `config.yaml`:
+
+```yaml
+engine:
+  observers:
+    - type: webhook
+      platform: my_platform
+      url: "${MY_WEBHOOK_URL}"
+```
 
 ## Usage
 
@@ -319,6 +404,16 @@ resource-sync/
 │   │   ├── drain.py              # No-op drain sink (dry-run mode)
 │   │   ├── git.py                # Git-aware sink (write + commit)
 │   │   └── local.py              # Local file sink with two-phase commit
+│   ├── observer/                 # Event observer plugins
+│   │   ├── __init__.py           #  Observer discovery
+│   │   ├── log.py                #  LogObserver — logs events to stdout
+│   │   └── webhook/              #  Webhook observer package
+│   │       ├── __init__.py       #   WebhookObserver — dispatcher
+│   │       ├── base.py           #   WebhookPlatform protocol + base class
+│   │       ├── dingtalk.py       #   DingTalk platform plugin
+│   │       ├── slack.py          #   Slack platform plugin
+│   │       ├── wechat_work.py    #   WeChat Work platform plugin
+│   │       └── generic.py        #   Generic JSON platform plugin
 │   ├── transform/                # Stream transform plugins
 │   │   ├── identity.py           # Identity transform (pass-through, reference impl)
 │   │   └── ...                   # Add custom transforms here
@@ -355,11 +450,12 @@ __main__.py → cli/app.py → engine/config.py → domain/models.py (leaf)
 
 - **domain/** — Pure domain models (Pydantic), events, pipeline declarations, and stream type protocols. No I/O, no side effects.
 - **engine/** — Configuration loading, pipeline building, execution, and orchestration. The engine assembles pipelines from registered plugins and runs them.
-- **plugin/** — Decorator-based plugin registry. Five plugin types: fetcher, validator, transform, sink, observer.
+- **plugin/** — Decorator-based plugin registry. Six plugin types: fetcher, validator, transform, sink, observer, webhook_platform.
 - **fetcher/** — Data source plugins. Each fetcher handles one or more URL schemes (e.g., `http`, `https`).
 - **validator/** — Content safety checks applied to every downloaded resource.
 - **transform/** — Stream transformations (decompress, decrypt, filter, etc.).
 - **sink/** — Output destinations. Local file system, Git-aware writer, drain (dry-run).
+- **observer/** — Event listeners. LogObserver (built-in) and WebhookObserver with pluggable platforms (DingTalk, Slack, WeChat Work, Generic).
 - **eventbus/** — In-memory event bus with subscribe/emit pattern.
 - **cli/** — Argument parsing and application bootstrap.
 

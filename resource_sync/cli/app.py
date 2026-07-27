@@ -13,6 +13,7 @@ from resource_sync.engine.config import ConfigError, load_config
 from resource_sync.engine.executor import PipelineExecutor
 from resource_sync.engine.orchestrator import SyncOrchestrator
 from resource_sync.eventbus.memory import EventBus
+from resource_sync.fetcher.cache import EtagCache
 from resource_sync.observer.log import LogObserver
 from resource_sync.plugin.registry import get_registry
 
@@ -75,8 +76,25 @@ def main(argv: list[str] | None = None) -> int:
         # 3. Build engine
         event_bus = EventBus()
         event_bus.register_observer(LogObserver())
+
+        # 3a. Register observers from config
+        for obs_config in config.observer_configs:
+            obs_type = obs_config.get("type", "log")
+            if obs_type == "log":
+                continue  # Already registered above
+            try:
+                obs_cls = registry.get_observer(obs_type)
+                observer = obs_cls.configure(obs_config)
+                event_bus.register_observer(observer)
+                _LOGGER.debug("Registered observer '%s' from config", obs_type)
+            except Exception as e:
+                _LOGGER.warning("Failed to configure observer '%s': %s", obs_type, e)
+
         executor = PipelineExecutor(event_bus)
-        builder = PipelineBuilder(registry)
+
+        # 3b. Initialize ETag cache
+        etag_cache = EtagCache(repo_root)
+        builder = PipelineBuilder(registry, etag_cache=etag_cache)
         orchestrator = SyncOrchestrator(
             builder=builder,
             executor=executor,

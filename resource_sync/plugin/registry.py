@@ -26,7 +26,16 @@ class PluginNotFoundError(Exception):
 
 
 class PluginRegistry:
-    """Central plugin registry — manages five plugin types."""
+    """Central plugin registry — manages six plugin types.
+
+    Plugin types:
+    - ``fetcher`` — data source (HTTP, Git, …)
+    - ``validator`` — content safety checks (empty, size, HTML error, …)
+    - ``transform`` — stream transformations (identity, decrypt, …)
+    - ``sink`` — output destinations (local file, Git, drain, …)
+    - ``observer`` — event listeners (log, webhook, …)
+    - ``webhook_platform`` — webhook message formatters (DingTalk, Slack, …)
+    """
 
     def __init__(self) -> None:
         self._fetchers: dict[str, Any] = {}
@@ -34,6 +43,7 @@ class PluginRegistry:
         self._validators: list[Any] = []
         self._sinks: dict[str, Any] = {}
         self._observers: list[Any] = []
+        self._webhook_platforms: dict[str, Any] = {}
 
     # ─── Registration ───
 
@@ -66,6 +76,22 @@ class PluginRegistry:
         self._observers.append(plugin_cls)
         _LOGGER.debug("Registered observer: %s", plugin_cls.__name__)
 
+    # ─── Webhook platform registration ───
+
+    def register_webhook_platform(self, name: str, plugin_cls: Any) -> None:
+        if name in self._webhook_platforms:
+            raise PluginConflictError(
+                f"Webhook platform '{name}' already registered by "
+                f"{self._webhook_platforms[name].__name__}"
+            )
+        self._webhook_platforms[name] = plugin_cls
+        _LOGGER.debug("Registered webhook platform '%s': %s", name, plugin_cls.__name__)
+
+    def get_webhook_platform(self, name: str) -> Any:
+        if name not in self._webhook_platforms:
+            raise PluginNotFoundError(f"No webhook platform: '{name}'")
+        return self._webhook_platforms[name]
+
     # ─── Query ───
 
     def get_fetcher(self, scheme: str) -> Any:
@@ -92,6 +118,17 @@ class PluginRegistry:
 
     def get_observers(self) -> list[Any]:
         return list(self._observers)
+
+    def get_observer(self, name: str) -> Any:
+        """Look up an observer plugin class by name.
+
+        Raises ``PluginNotFoundError`` if no observer with the given
+        name is registered.
+        """
+        for cls in self._observers:
+            if getattr(cls, "name", "") == name:
+                return cls
+        raise PluginNotFoundError(f"No observer: '{name}'")
 
 
 # ─── Global registry instance ───
@@ -143,3 +180,35 @@ def register_observer(cls):
     """Decorator: register an observer plugin class."""
     get_registry().register_observer(cls)
     return cls
+
+
+def register_webhook_platform(name: str):
+    """Decorator: register a webhook platform plugin class.
+
+    The decorated class must implement the ``WebhookPlatform`` protocol
+    (or subclass ``WebhookPlatformBase``) and set ``name: ClassVar[str]``
+    to match the registered name.
+
+    Usage::
+
+        @register_webhook_platform("my_platform")
+        class MyPlatform(WebhookPlatformBase):
+            name = "my_platform"
+
+            def _make_message(self, text: str, title: str) -> dict:
+                return {"my": "format", "text": text}
+
+    The platform can then be used in ``config.yaml``:
+
+    .. code-block:: yaml
+
+       engine:
+         observers:
+           - type: webhook
+             platform: my_platform
+             url: "${WEBHOOK_URL}"
+    """
+    def decorator(cls):
+        get_registry().register_webhook_platform(name, cls)
+        return cls
+    return decorator
