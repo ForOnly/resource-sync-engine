@@ -1,7 +1,2 @@
-"""
-Resource Sync Engine — A config-driven resource synchronization system.
-
-Downloads remote resources, compares by hash, and auto-commits changes.
-"""
-
-__version__ = "0.1.0"
+"""Resource Sync Engine — stream-based, plugin-oriented sync system."""
+__version__ = "2.0.0"

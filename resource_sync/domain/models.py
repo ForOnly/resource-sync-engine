@@ -1,9 +1,4 @@
-"""
-Domain models — Pydantic models used across all modules.
-
-All configuration models are frozen (immutable). Result models are mutable
-because they are built incrementally during a sync run.
-"""
+"""Pure domain models — Pydantic-based immutable value objects."""
 
 from __future__ import annotations
 
@@ -11,92 +6,76 @@ import json
 import uuid
 from datetime import datetime, timezone
 from enum import Enum
-from pathlib import Path
+from pathlib import PurePath
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
 
 class HashAlgorithm(str, Enum):
-    """Supported hash algorithms."""
-
     SHA256 = "sha256"
     SHA1 = "sha1"
     MD5 = "md5"
 
 
 class SyncStatus(str, Enum):
-    """Per-resource outcome of a sync operation."""
-
     CREATED = "created"
     UPDATED = "updated"
     SKIPPED = "skipped"
     ERROR = "error"
-
-
-class Resource(BaseModel):
-    """A single resource definition parsed from the YAML config."""
-
-    model_config = ConfigDict(frozen=True)
-
-    name: str
-    url: str
-    path: Path
-    algorithm: HashAlgorithm = HashAlgorithm.SHA256
-    headers: dict[str, str] = Field(default_factory=dict)
-    timeout: float = 30.0
-    retry: int = 3
-    max_size: int = 500 * 1024 * 1024  # 500 MB
-
-
-class SyncConfig(BaseModel):
-    """Top-level configuration holding all resources."""
-
-    model_config = ConfigDict(frozen=True)
-
-    resources: tuple[Resource, ...]
+    CANCELLED = "cancelled"
 
 
 class HashResult(BaseModel):
-    """Result of a hash computation — algorithm plus hex digest."""
-
     model_config = ConfigDict(frozen=True)
-
     algorithm: HashAlgorithm
     hex_digest: str
 
     def matches(self, other: HashResult) -> bool:
-        """Return ``True`` if both algorithm and digest are identical."""
         return self.algorithm is other.algorithm and self.hex_digest == other.hex_digest
 
     def __str__(self) -> str:
         return f"{self.algorithm.value}:{self.hex_digest}"
 
 
-class SyncResult(BaseModel):
-    """Per-resource outcome of a single sync operation."""
+class Resource(BaseModel):
+    """A single resource definition — pure data, no I/O."""
+    model_config = ConfigDict(frozen=True)
+    name: str
+    url: str
+    path: PurePath
+    algorithm: HashAlgorithm = HashAlgorithm.SHA256
+    headers: dict[str, str] = Field(default_factory=dict)
+    timeout: float = 30.0
+    retry: int = 3
+    max_size: int = 524_288_000
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
+
+class ResourceResult(BaseModel):
+    """Per-resource outcome of a single sync operation."""
+    model_config = ConfigDict(frozen=True)
     resource_name: str
     status: SyncStatus
     local_hash: HashResult | None = None
     remote_hash: HashResult | None = None
     error_message: str | None = None
+    stage_times: dict[str, float] = Field(default_factory=dict)
     dry_run: bool = False
 
 
 class SyncReport(BaseModel):
-    """Aggregate report for a full sync run, serializable to JSON."""
-
+    """Aggregate report for a full sync run."""
+    model_config = ConfigDict(frozen=True)
     run_id: str = Field(default_factory=lambda: uuid.uuid4().hex[:12])
     timestamp: str = Field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat()
     )
     dry_run: bool = False
-    results: list[SyncResult] = Field(default_factory=list)
+    results: tuple[ResourceResult, ...] = ()
 
     @property
     def summary(self) -> dict[str, int]:
-        """Return a count breakdown by status."""
         counts: dict[str, int] = {}
         for r in self.results:
             counts[r.status.value] = counts.get(r.status.value, 0) + 1
@@ -104,11 +83,13 @@ class SyncReport(BaseModel):
 
     @property
     def changed(self) -> int:
-        """Number of resources that were created or updated."""
         return self.summary.get("created", 0) + self.summary.get("updated", 0)
 
+    @property
+    def has_errors(self) -> bool:
+        return self.summary.get("error", 0) > 0
+
     def to_dict(self) -> dict[str, Any]:
-        """Serialize the report to a JSON-compatible dictionary."""
         return {
             "run_id": self.run_id,
             "timestamp": self.timestamp,
@@ -128,5 +109,4 @@ class SyncReport(BaseModel):
         }
 
     def to_json(self, indent: int = 2) -> str:
-        """Return the report as a JSON string."""
         return json.dumps(self.to_dict(), indent=indent)
