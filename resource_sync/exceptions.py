@@ -27,5 +27,9 @@ class ContentError(ResourceSyncError):
     """Downloaded content failed validation (empty, too large, or an HTML error page)."""
 
 
+class WriteError(ResourceSyncError):
+    """File write failure (permission denied, disk full, or path error)."""
+
+
 class GitError(ResourceSyncError):
     """Git command failure (staging, commit, or push)."""

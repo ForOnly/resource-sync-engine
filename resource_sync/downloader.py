@@ -29,6 +29,10 @@ def download_resource(
 ) -> bytes:
     """Download a resource from an HTTP(S) URL.
 
+    Uses streaming download so that oversized responses are detected
+    and aborted early, even when the server omits a ``content-length``
+    header.
+
     Args:
         url: The URL to fetch.
         headers: Optional HTTP headers to include in the request.
@@ -47,33 +51,51 @@ def download_resource(
 
     for attempt in range(1, retry + 1):
         try:
-            with httpx.Client(timeout=httpx.Timeout(timeout), follow_redirects=True) as client:
-                response = client.get(url, headers=headers or {})
+            with httpx.Client(
+                timeout=httpx.Timeout(timeout), follow_redirects=True
+            ) as client:
+                with client.stream("GET", url, headers=headers or {}) as response:
+                    # Check content-length header upfront to avoid large downloads
+                    content_length = response.headers.get("content-length")
+                    if content_length and int(content_length) > max_size:
+                        raise DownloadError(
+                            f"Resource at '{url}' exceeds maximum size "
+                            f"({content_length} bytes > {max_size} bytes)"
+                        )
 
-                # Check content-length header upfront to avoid large downloads
-                content_length = response.headers.get("content-length")
-                if content_length and int(content_length) > max_size:
-                    raise DownloadError(
-                        f"Resource at '{url}' exceeds maximum size "
-                        f"({content_length} bytes > {max_size} bytes)"
-                    )
+                    # Check HTTP status before reading the body.
+                    # We avoid raise_for_status() here because streaming
+                    # responses may not have _request set in all httpx
+                    # versions, and we want to read the error body manually.
+                    if response.status_code >= 400:
+                        body = response.read()
+                        error_body = _try_decode_error(body)
+                        raise DownloadError(
+                            f"HTTP {response.status_code} downloading "
+                            f"'{url}': {error_body}"
+                        )
 
-                response.raise_for_status()
-                content = response.content
+                    # Stream the response body, checking size as we go
+                    chunks: list[bytes] = []
+                    total = 0
+                    for chunk in response.iter_bytes():
+                        total += len(chunk)
+                        if total > max_size:
+                            raise DownloadError(
+                                f"Downloaded content for '{url}' exceeds maximum size "
+                                f"({total} bytes > {max_size} bytes)"
+                            )
+                        chunks.append(chunk)
 
-                if len(content) > max_size:
-                    raise DownloadError(
-                        f"Downloaded content for '{url}' exceeds maximum size "
-                        f"({len(content)} bytes > {max_size} bytes)"
-                    )
+                    content = b"".join(chunks)
 
-                _LOGGER.debug(
-                    "Downloaded '%s' (%d bytes, HTTP %d)",
-                    url,
-                    len(content),
-                    response.status_code,
-                )
-                return content
+            _LOGGER.debug(
+                "Downloaded '%s' (%d bytes, HTTP %d)",
+                url,
+                len(content),
+                response.status_code,
+            )
+            return content
 
         except httpx.TimeoutException as e:
             last_exception = DownloadError(f"Timeout downloading '{url}': {e}")

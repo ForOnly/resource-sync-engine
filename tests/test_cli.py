@@ -70,13 +70,17 @@ class TestMain:
         tmp_path: Path,
     ) -> None:
         """A successful sync run returns 0."""
-        from resource_sync.models import SyncReport, SyncStatus
+        from resource_sync.models import SyncReport, SyncResult, SyncStatus
 
         mock_config.return_value = None  # Just needs to not raise
 
         report = SyncReport()
         report.results.append(
-            type("Result", (), {"resource_name": "test", "status": SyncStatus.CREATED, "dry_run": False})()  # type: ignore
+            SyncResult(
+                resource_name="test",
+                status=SyncStatus.CREATED,
+                dry_run=False,
+            )
         )
         mock_sync.return_value = report
 
@@ -97,13 +101,18 @@ class TestMain:
         tmp_path: Path,
     ) -> None:
         """A sync with errors returns 1."""
-        from resource_sync.models import SyncReport, SyncStatus
+        from resource_sync.models import SyncReport, SyncResult, SyncStatus
 
         mock_config.return_value = None
 
         report = SyncReport()
         report.results.append(
-            type("Result", (), {"resource_name": "test", "status": SyncStatus.ERROR, "error_message": "Failed", "dry_run": False})()  # type: ignore
+            SyncResult(
+                resource_name="test",
+                status=SyncStatus.ERROR,
+                error_message="Failed",
+                dry_run=False,
+            )
         )
         mock_sync.return_value = report
 
@@ -124,13 +133,17 @@ class TestMain:
         tmp_path: Path,
     ) -> None:
         """Dry-run mode skips git commit."""
-        from resource_sync.models import SyncReport, SyncStatus
+        from resource_sync.models import SyncReport, SyncResult, SyncStatus
 
         mock_config.return_value = None
 
         report = SyncReport(dry_run=True)
         report.results.append(
-            type("Result", (), {"resource_name": "test", "status": SyncStatus.CREATED, "dry_run": True})()  # type: ignore
+            SyncResult(
+                resource_name="test",
+                status=SyncStatus.CREATED,
+                dry_run=True,
+            )
         )
         mock_sync.return_value = report
 
@@ -152,13 +165,17 @@ class TestMain:
         tmp_path: Path,
     ) -> None:
         """--no-commit skips git operations."""
-        from resource_sync.models import SyncReport, SyncStatus
+        from resource_sync.models import SyncReport, SyncResult, SyncStatus
 
         mock_config.return_value = None
 
         report = SyncReport()
         report.results.append(
-            type("Result", (), {"resource_name": "test", "status": SyncStatus.CREATED, "dry_run": False})()  # type: ignore
+            SyncResult(
+                resource_name="test",
+                status=SyncStatus.CREATED,
+                dry_run=False,
+            )
         )
         mock_sync.return_value = report
 

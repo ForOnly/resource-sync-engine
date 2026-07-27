@@ -110,20 +110,20 @@ class TestHashResultMatches:
 
     def test_identical(self) -> None:
         """Identical HashResults match."""
-        a = HashResult(HashAlgorithm.SHA256, "abc123")
-        b = HashResult(HashAlgorithm.SHA256, "abc123")
+        a = HashResult(algorithm=HashAlgorithm.SHA256, hex_digest="abc123")
+        b = HashResult(algorithm=HashAlgorithm.SHA256, hex_digest="abc123")
         assert a.matches(b)
 
     def test_different_digest(self) -> None:
         """Different digests do not match."""
-        a = HashResult(HashAlgorithm.SHA256, "abc123")
-        b = HashResult(HashAlgorithm.SHA256, "def456")
+        a = HashResult(algorithm=HashAlgorithm.SHA256, hex_digest="abc123")
+        b = HashResult(algorithm=HashAlgorithm.SHA256, hex_digest="def456")
         assert not a.matches(b)
 
     def test_different_algorithm(self) -> None:
         """Different algorithms do not match (even if digest happens to match)."""
-        a = HashResult(HashAlgorithm.SHA256, "abc123")
-        b = HashResult(HashAlgorithm.SHA1, "abc123")
+        a = HashResult(algorithm=HashAlgorithm.SHA256, hex_digest="abc123")
+        b = HashResult(algorithm=HashAlgorithm.SHA1, hex_digest="abc123")
         assert not a.matches(b)
 
 
@@ -132,5 +132,5 @@ class TestHashResultStr:
 
     def test_format(self) -> None:
         """String representation includes algorithm and digest."""
-        result = HashResult(HashAlgorithm.SHA256, "abc123")
+        result = HashResult(algorithm=HashAlgorithm.SHA256, hex_digest="abc123")
         assert str(result) == "sha256:abc123"

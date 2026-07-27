@@ -21,7 +21,7 @@ from pathlib import Path
 
 from resource_sync.content_validator import validate_content
 from resource_sync.downloader import download_resource
-from resource_sync.exceptions import ContentError, DownloadError, HashError
+from resource_sync.exceptions import ContentError, DownloadError, HashError, WriteError
 from resource_sync.hasher import hash_bytes, hash_file
 from resource_sync.models import (
     HashAlgorithm,
@@ -127,10 +127,17 @@ def _sync_single_resource(resource: Resource, dry_run: bool = False) -> SyncResu
     remote_hash = hash_bytes(remote_data, resource.algorithm)
 
     # Step 4: Check local file
-    if resource.path.exists():
-        return _handle_existing_file(resource, remote_data, remote_hash, dry_run)
-
-    return _handle_missing_file(resource, remote_data, remote_hash, dry_run)
+    try:
+        if resource.path.exists():
+            return _handle_existing_file(resource, remote_data, remote_hash, dry_run)
+        return _handle_missing_file(resource, remote_data, remote_hash, dry_run)
+    except WriteError as e:
+        return SyncResult(
+            resource_name=resource.name,
+            status=SyncStatus.ERROR,
+            error_message=str(e),
+            dry_run=dry_run,
+        )
 
 
 def _handle_existing_file(
@@ -213,7 +220,7 @@ def _write_resource(resource: Resource, data: bytes) -> None:
             "Wrote %d bytes to '%s'", len(data), resource.path
         )
     except OSError as e:
-        raise HashError(
+        raise WriteError(
             f"Failed to write resource '{resource.name}' to "
             f"'{resource.path}': {e}"
         )

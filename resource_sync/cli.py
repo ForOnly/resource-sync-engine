@@ -88,14 +88,24 @@ def configure_logging(verbose: bool = False) -> None:
     root_logger.addHandler(handler)
 
 
-def write_report(report_json: str, repo_root: Path) -> None:
-    """Write the sync report to a JSON file in the repo root."""
+def write_report(report_json: str, repo_root: Path) -> bool:
+    """Write the sync report to a JSON file in the repo root.
+
+    Args:
+        report_json: The JSON string to write.
+        repo_root: The repository root directory.
+
+    Returns:
+        ``True`` on success, ``False`` on failure.
+    """
     report_path = repo_root / _REPORT_FILENAME
     try:
         report_path.write_text(report_json, encoding="utf-8")
         _LOGGER.debug("Sync report written to '%s'", report_path)
+        return True
     except OSError as e:
-        _LOGGER.warning("Failed to write sync report: %s", e)
+        _LOGGER.error("Failed to write sync report: %s", e)
+        return False
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -131,7 +141,7 @@ def main(argv: list[str] | None = None) -> int:
         report = sync_resources(config, dry_run=args.dry_run)
 
         # 3. Write sync report
-        write_report(report.to_json(), repo_root)
+        report_written = write_report(report.to_json(), repo_root)
 
         # 4. Print summary to stderr
         summary = report.summary
@@ -158,6 +168,10 @@ def main(argv: list[str] | None = None) -> int:
                 "%d resource(s) failed to sync — see log for details",
                 summary["error"],
             )
+            return 1
+
+        if not report_written:
+            _LOGGER.error("Sync report could not be written — see log for details")
             return 1
 
         return 0
