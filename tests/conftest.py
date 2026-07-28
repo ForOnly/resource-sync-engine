@@ -4,7 +4,12 @@ from __future__ import annotations
 
 import pytest
 
-from resource_sync.domain.models import Resource, ResourceResult, SyncReport, SyncStatus, HashAlgorithm, HashResult
+from resource_sync.domain.models import (
+    HashAlgorithm,
+    Resource,
+    SyncReport,
+    SyncStatus,
+)
 from resource_sync.domain.stream import CancellationToken, PipelineContext, Stream
 
 

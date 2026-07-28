@@ -76,9 +76,10 @@ class PipelineBuilder:
         return sink_cls.configure(resource)
 
 
-def _priority_key(cls_or_callable) -> int:
+def _priority_key(cls_or_callable: object) -> int:
     """Extract priority from a plugin instance or class.
 
     Plugins that don't define a priority default to 500 (middle).
     """
-    return getattr(cls_or_callable, "priority", 500)
+    priority = getattr(cls_or_callable, "priority", 500)
+    return priority if isinstance(priority, int) else 500

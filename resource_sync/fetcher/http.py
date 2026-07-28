@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import ClassVar
 
 import httpx
 
@@ -40,6 +39,14 @@ def _get_shared_transport() -> httpx.AsyncHTTPTransport:
             ),
         )
     return _shared_transport
+
+
+async def close_shared_transport() -> None:
+    """Close and reset the shared HTTP transport if it was created."""
+    global _shared_transport
+    if _shared_transport is not None:
+        await _shared_transport.aclose()
+        _shared_transport = None
 
 
 def set_etag_cache(cache: EtagCache) -> None:

@@ -1,27 +1,21 @@
 {
-  "run_id": "dc5ea373f6ee",
-  "timestamp": "2026-07-27T09:43:58.523403+00:00",
-  "dry_run": false,
+  "run_id": "728fae8d1a0a",
+  "timestamp": "2026-07-28T05:38:18.573917+00:00",
+  "dry_run": true,
   "summary": {
-    "skipped": 2,
-    "created": 1
+    "skipped": 3
   },
   "results": [
     {
       "resource_name": "AI.list",
       "status": "skipped",
       "local_hash": "sha256:b9526ae00f707b6622bd4b630f20481673d3af9eb086ae1281fbff5fd54fd6d5",
-      "remote_hash": "sha256:b9526ae00f707b6622bd4b630f20481673d3af9eb086ae1281fbff5fd54fd6d5",
+      "remote_hash": null,
       "error_message": null,
-      "dry_run": false,
+      "dry_run": true,
       "stage_times_ms": {
-        "local_hash": 15.147086999995452,
-        "fetch": 1332.0093580000005,
-        "validate.EmptyValidator": 0.761347999997497,
-        "validate.HtmlErrorValidator": 0.7852959999965492,
-        "validate.SizeValidator": 0.7901839999959748,
-        "sink": 0.9556719999963548,
-        "compare": 0.0
+        "local_hash": 15.000000013969839,
+        "fetch": 62.999999965541065
       }
     },
     {
@@ -30,26 +24,22 @@
       "local_hash": "sha256:bb62220ae6ba9ee37421d0ba8ec734dc9d71af2cc8cd7209685f0d4939d7cca2",
       "remote_hash": null,
       "error_message": null,
-      "dry_run": false,
+      "dry_run": true,
       "stage_times_ms": {
-        "local_hash": 5.364163999999505,
-        "fetch": 179.94096199999632
+        "local_hash": 0.0,
+        "fetch": 687.9999999655411
       }
     },
     {
       "resource_name": "adblock.txt",
-      "status": "created",
-      "local_hash": null,
-      "remote_hash": "sha256:f2de53f1aad6ebfe73e5a03e5dbbeadb2652329b8c210b3cad5babd2533bf41c",
+      "status": "skipped",
+      "local_hash": "sha256:f2de53f1aad6ebfe73e5a03e5dbbeadb2652329b8c210b3cad5babd2533bf41c",
+      "remote_hash": null,
       "error_message": null,
-      "dry_run": false,
+      "dry_run": true,
       "stage_times_ms": {
-        "local_hash": 0.040259999998681906,
-        "fetch": 94.97289500000505,
-        "validate.EmptyValidator": 0.7143120000066006,
-        "validate.HtmlErrorValidator": 0.7309259999956907,
-        "validate.SizeValidator": 0.7364049999978306,
-        "sink": 0.945115000000385
+        "local_hash": 0.0,
+        "fetch": 765.999999945052
       }
     }
   ]

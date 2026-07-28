@@ -6,10 +6,16 @@ import logging
 from typing import Any, ClassVar
 
 from resource_sync.domain.events import (
-    Event, ResourceFailed, ResourceFetchCompleted, ResourceFetchStarted,
-    ResourceRemoteUnchanged, ResourceSkipped, ResourceWritten, SyncCompleted, SyncStarted,
+    Event,
+    ResourceFailed,
+    ResourceFetchCompleted,
+    ResourceFetchStarted,
+    ResourceRemoteUnchanged,
+    ResourceSkipped,
+    ResourceWritten,
+    SyncCompleted,
+    SyncStarted,
 )
-
 from resource_sync.plugin.registry import register_observer
 
 _LOGGER = logging.getLogger(__name__)

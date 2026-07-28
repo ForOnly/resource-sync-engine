@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol
 
 if TYPE_CHECKING:
     from resource_sync.domain.models import Resource
@@ -73,7 +73,7 @@ class PipelineContext:
     """Execution context carried through the pipeline."""
     resource: Resource
     cancel: CancellationToken
-    env: dict[str, str] = field(default_factory=dict)
+    env: dict[str, Any] = field(default_factory=dict)
     config: dict[str, Any] = field(default_factory=dict)
 
 

@@ -7,6 +7,7 @@ import hashlib
 import logging
 import time
 from pathlib import Path
+from typing import Any
 
 from resource_sync.domain.events import (
     ResourceFailed,
@@ -23,6 +24,7 @@ from resource_sync.domain.stream import (
     CancellationToken,
     PipelineContext,
     Stream,
+    StreamTransformer,
     drain_stream,
     tee_stream,
 )
@@ -42,8 +44,8 @@ class PipelineExecutor:
         pipeline: Pipeline,
         resource: Resource,
         cancel: CancellationToken,
-        config: dict | None = None,
-        env: dict[str, str] | None = None,
+        config: dict[str, Any] | None = None,
+        env: dict[str, Any] | None = None,
     ) -> ResourceResult:
         ctx = PipelineContext(
             resource=resource, cancel=cancel, env=env or {}, config=config or {},
@@ -78,7 +80,7 @@ class PipelineExecutor:
                     local_hash=local_hash,
                     remote_hash=None,
                     stage_times=stage_times,
-                    dry_run=ctx.config.get("dry_run", False),
+                    dry_run=bool(ctx.config.get("dry_run", False)),
                 )
 
             # Stage 2-3: Validate + Transform (wrap with timing)
@@ -126,7 +128,7 @@ class PipelineExecutor:
                     local_hash=local_hash,
                     remote_hash=remote_hash,
                     stage_times=stage_times,
-                    dry_run=ctx.config.get("dry_run", False),
+                    dry_run=bool(ctx.config.get("dry_run", False)),
                 )
 
             # Content changed — commit the temp file
@@ -152,7 +154,7 @@ class PipelineExecutor:
                 local_hash=local_hash,
                 remote_hash=remote_hash,
                 stage_times=stage_times,
-                dry_run=ctx.config.get("dry_run", False),
+                dry_run=bool(ctx.config.get("dry_run", False)),
             )
 
         except Exception as e:
@@ -169,7 +171,7 @@ class PipelineExecutor:
                 status=SyncStatus.ERROR,
                 error_message=f"{type(e).__name__}: {e}",
                 stage_times=stage_times,
-                dry_run=ctx.config.get("dry_run", False),
+                dry_run=bool(ctx.config.get("dry_run", False)),
             )
 
     async def _compute_local_hash(self, resource: Resource) -> HashResult | None:
@@ -182,7 +184,7 @@ class PipelineExecutor:
         if not target.exists():
             return None
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, self._sync_hash_file, target, resource)
 
     @staticmethod
@@ -220,21 +222,22 @@ class PipelineExecutor:
             sink.discard()
 
 
-def _extract_stage_name(stage_fn) -> str:
+def _extract_stage_name(stage_fn: StreamTransformer) -> str:
     """Extract a human-readable name from a stage function.
 
     For bound methods (e.g. validator_instance._validate), returns the
     class name (e.g. 'EmptyValidator'). For regular functions, returns
     the function name.
     """
-    # Bound method: extract the owning class name
-    if hasattr(stage_fn, "__self__") and hasattr(stage_fn.__self__, "__class__"):
-        return type(stage_fn.__self__).__name__
-    # Regular function
-    if hasattr(stage_fn, "__name__"):
-        return stage_fn.__name__
-    # Fallback
-    return getattr(type(stage_fn), "__name__", str(type(stage_fn)))
+    owner = getattr(stage_fn, "__self__", None)
+    if owner is not None:
+        return type(owner).__name__
+
+    name = getattr(stage_fn, "__name__", None)
+    if isinstance(name, str):
+        return name
+
+    return type(stage_fn).__name__
 
 
 class _TimedStreamWrapper:
@@ -248,7 +251,7 @@ class _TimedStreamWrapper:
     def __init__(
         self,
         stream: Stream,
-        stage_fn,
+        stage_fn: StreamTransformer,
         resource: Resource,
         ctx: PipelineContext,
         stage_name: str,

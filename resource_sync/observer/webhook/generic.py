@@ -25,7 +25,7 @@ class GenericPlatform(WebhookPlatformBase):
         # The first line is the header, remaining lines are the body
         lines = text.split("\n")
         # Filter out empty lines for the body
-        body_lines = [l for l in lines[1:] if l.strip()]
+        body_lines = [line for line in lines[1:] if line.strip()]
         return {
             "event": title.split()[-1].lower().replace(" ", "_")
             if " " in title

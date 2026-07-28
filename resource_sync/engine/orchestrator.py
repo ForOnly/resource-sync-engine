@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from pathlib import Path
+from typing import Protocol, cast
 
-from resource_sync.domain.events import SyncCompleted, SyncStarted
+from resource_sync.domain.events import SyncStarted
 from resource_sync.domain.models import Resource, ResourceResult, SyncReport, SyncStatus
 from resource_sync.domain.stream import CancellationToken
 from resource_sync.engine.builder import PipelineBuilder
@@ -15,6 +17,12 @@ from resource_sync.eventbus.memory import EventBus
 from resource_sync.plugin.registry import get_registry
 
 _LOGGER = logging.getLogger(__name__)
+
+
+class _GitSink(Protocol):
+    repo_root: Path | None
+
+    def commit_all(self, repo_root: Path | None, resource_count: int = 0) -> bool: ...
 
 
 class SyncOrchestrator:
@@ -110,7 +118,6 @@ class SyncOrchestrator:
                 )
 
         report = SyncReport(dry_run=dry_run, results=tuple(results))
-        await self._events.emit(SyncCompleted(summary=str(report.summary)))
 
         _LOGGER.info(
             "Sync complete — %d created, %d updated, %d skipped, %d errors",
@@ -138,8 +145,10 @@ class SyncOrchestrator:
         try:
             registry = get_registry()
             git_sink_cls = registry.get_sink("git")
-            from pathlib import Path
-            git = git_sink_cls(repo_root=Path(repo_root) if repo_root else None)
+            git = cast(
+                _GitSink,
+                git_sink_cls(repo_root=Path(repo_root) if repo_root else None),
+            )
             return git.commit_all(repo_root=git.repo_root, resource_count=changed)
         except Exception as e:
             _LOGGER.error("Git operation failed: %s", e)
@@ -152,12 +161,11 @@ class SyncOrchestrator:
         processes or when the event loop is reused.
         """
         try:
-            from resource_sync.fetcher.http import _get_shared_transport
-            transport = _get_shared_transport()
-            if transport is not None:
-                await transport.aclose()
-                _LOGGER.debug("Closed shared HTTP transport")
-        except (RuntimeError, Exception) as e:
+            from resource_sync.fetcher.http import close_shared_transport
+
+            await close_shared_transport()
+            _LOGGER.debug("Closed shared HTTP transport")
+        except Exception as e:
             # RuntimeError: event loop is closed; other errors: transport issues
             if "Event loop is closed" not in str(e):
                 _LOGGER.warning("Failed to close HTTP transport: %s", e)

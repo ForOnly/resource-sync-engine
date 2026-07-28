@@ -50,3 +50,48 @@ class TestGitSink:
         sink = GitSink(repo_root=git_repo)
         result = sink.commit_all(repo_root=git_repo, resource_count=0)
         assert result is True
+
+    def test_commit_all_returns_false_when_push_fails(
+        self,
+        git_repo: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A failed push must make the full Git operation fail."""
+        sink = GitSink(repo_root=git_repo)
+
+        def fake_run(repo_root: Path, *args: str) -> str | None:
+            command = args[0]
+            if command == "status":
+                return " M resource.txt"
+            if command == "rev-parse":
+                return "master"
+            if command == "push":
+                return None
+            return ""
+
+        monkeypatch.setattr(sink, "_run", fake_run)
+
+        result = sink.commit_all(repo_root=git_repo, resource_count=1)
+
+        assert result is False
+
+    def test_commit_all_accepts_successful_push_with_empty_stdout(
+        self,
+        git_repo: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Git push commonly succeeds without writing to stdout."""
+        sink = GitSink(repo_root=git_repo)
+
+        def fake_run(repo_root: Path, *args: str) -> str | None:
+            if args[0] == "status":
+                return " M resource.txt"
+            if args[0] == "rev-parse":
+                return "master"
+            return ""
+
+        monkeypatch.setattr(sink, "_run", fake_run)
+
+        result = sink.commit_all(repo_root=git_repo, resource_count=1)
+
+        assert result is True

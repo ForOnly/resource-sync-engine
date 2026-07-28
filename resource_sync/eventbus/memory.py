@@ -4,12 +4,18 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable, Coroutine
-from typing import Any
+from typing import Any, Protocol
 
 from resource_sync.domain.events import Event
 
 _LOGGER = logging.getLogger(__name__)
 EventHandler = Callable[[Event], Coroutine[Any, Any, None]]
+
+
+class EventObserver(Protocol):
+    """Observer capable of handling domain events asynchronously."""
+
+    async def on_event(self, event: Event) -> None: ...
 
 
 class EventBus:
@@ -46,9 +52,7 @@ class EventBus:
         if handler in handlers:
             handlers.remove(handler)
 
-    def register_observer(self, observer: Any) -> None:
-        if not hasattr(observer, "on_event"):
-            return
+    def register_observer(self, observer: EventObserver) -> None:
         async def handler(event: Event) -> None:
             await observer.on_event(event)
         self._wildcards.append(handler)

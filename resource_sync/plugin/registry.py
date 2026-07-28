@@ -8,21 +8,13 @@ classmethod protocols.
 from __future__ import annotations
 
 import logging
-from typing import Any
+from collections.abc import Callable
+from typing import Any, TypeVar
 
-from resource_sync.domain.stream import StreamSink, StreamSource, StreamTransformer
-from resource_sync.domain.models import Resource
-from resource_sync.domain.events import Event
+from resource_sync.plugin.errors import PluginConflictError, PluginNotFoundError
 
 _LOGGER = logging.getLogger(__name__)
-
-
-class PluginConflictError(Exception):
-    """Two plugins conflict (same scheme or name)."""
-
-
-class PluginNotFoundError(Exception):
-    """A requested plugin was not found."""
+_PluginT = TypeVar("_PluginT")
 
 
 class PluginRegistry:
@@ -146,43 +138,43 @@ def get_registry() -> PluginRegistry:
 
 # ─── Decorators ───
 
-def register_fetcher(schemes: frozenset[str]):
+def register_fetcher(schemes: frozenset[str]) -> Callable[[_PluginT], _PluginT]:
     """Decorator: register a fetcher plugin class."""
-    def decorator(cls):
+    def decorator(cls: _PluginT) -> _PluginT:
         get_registry().register_fetcher(cls, schemes)
         return cls
     return decorator
 
 
-def register_transform(name: str):
+def register_transform(name: str) -> Callable[[_PluginT], _PluginT]:
     """Decorator: register a transform plugin class."""
-    def decorator(cls):
+    def decorator(cls: _PluginT) -> _PluginT:
         get_registry().register_transform(name, cls)
         return cls
     return decorator
 
 
-def register_validator(cls):
+def register_validator(cls: _PluginT) -> _PluginT:
     """Decorator: register a validator plugin class."""
     get_registry().register_validator(cls)
     return cls
 
 
-def register_sink(name: str):
+def register_sink(name: str) -> Callable[[_PluginT], _PluginT]:
     """Decorator: register a sink plugin class."""
-    def decorator(cls):
+    def decorator(cls: _PluginT) -> _PluginT:
         get_registry().register_sink(name, cls)
         return cls
     return decorator
 
 
-def register_observer(cls):
+def register_observer(cls: _PluginT) -> _PluginT:
     """Decorator: register an observer plugin class."""
     get_registry().register_observer(cls)
     return cls
 
 
-def register_webhook_platform(name: str):
+def register_webhook_platform(name: str) -> Callable[[_PluginT], _PluginT]:
     """Decorator: register a webhook platform plugin class.
 
     The decorated class must implement the ``WebhookPlatform`` protocol
@@ -208,7 +200,7 @@ def register_webhook_platform(name: str):
              platform: my_platform
              url: "${WEBHOOK_URL}"
     """
-    def decorator(cls):
+    def decorator(cls: _PluginT) -> _PluginT:
         get_registry().register_webhook_platform(name, cls)
         return cls
     return decorator

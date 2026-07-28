@@ -66,26 +66,36 @@ class GitSink:
             _LOGGER.warning("No Git repository root found — skipping commit")
             return False
 
-        if not self._is_dirty(root):
+        dirty = self._is_dirty(root)
+        if dirty is None:
+            return False
+        if not dirty:
             _LOGGER.info("No changes to commit — working tree is clean")
             return True
 
-        self._run(root, "add", "-A")
+        if self._run(root, "add", "-A") is None:
+            _LOGGER.error("Git add failed")
+            return False
 
         if resource_count == 1:
             message = "chore(sync): auto-update 1 resource"
         else:
             message = f"chore(sync): auto-update {resource_count} resources"
 
-        if not self._run(root, "commit", "-m", message):
+        if self._run(root, "commit", "-m", message) is None:
             _LOGGER.error("Git commit failed")
             return False
 
         branch = self._run(root, "rev-parse", "--abbrev-ref", "HEAD")
-        if branch:
-            self._run(root, "push", "origin", branch)
-            _LOGGER.info("Pushed '%s' to origin/%s", message, branch)
+        if not branch:
+            _LOGGER.error("Failed to determine current Git branch")
+            return False
 
+        if self._run(root, "push", "origin", branch) is None:
+            _LOGGER.error("Git push failed for origin/%s", branch)
+            return False
+
+        _LOGGER.info("Pushed '%s' to origin/%s", message, branch)
         return True
 
     def _resolve_repo_root(self) -> Path | None:
@@ -99,8 +109,8 @@ class GitSink:
                 return parent
         return None
 
-    def _run(self, repo_root: Path, *args: str) -> str:
-        """Run a git command and return stdout. Returns empty string on failure."""
+    def _run(self, repo_root: Path, *args: str) -> str | None:
+        """Run a git command and return stdout. Returns ``None`` on failure."""
         try:
             result = subprocess.run(
                 ["git", *args],
@@ -111,10 +121,10 @@ class GitSink:
             )
         except FileNotFoundError:
             _LOGGER.error("Git is not installed or not found in PATH")
-            return ""
+            return None
         except OSError as e:
             _LOGGER.error("Git execution failed: %s", e)
-            return ""
+            return None
 
         if result.returncode != 0:
             stderr = result.stderr.strip()
@@ -130,11 +140,14 @@ class GitSink:
                     " ".join(args),
                     stderr,
                 )
-            return ""
+            return None
 
         return result.stdout.strip()
 
-    def _is_dirty(self, repo_root: Path) -> bool:
+    def _is_dirty(self, repo_root: Path) -> bool | None:
         """Check whether the working tree has uncommitted changes."""
         output = self._run(repo_root, "status", "--porcelain")
+        if output is None:
+            _LOGGER.error("Failed to inspect Git working tree")
+            return None
         return bool(output)

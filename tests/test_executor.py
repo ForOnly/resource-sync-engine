@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from resource_sync.domain.models import Resource, HashAlgorithm
+from resource_sync.domain.models import HashAlgorithm, Resource
 from resource_sync.domain.stream import CancellationToken, PipelineContext
 from resource_sync.engine.executor import _TimedStreamWrapper, _extract_stage_name
 from tests.conftest import bytes_stream, collect_stream

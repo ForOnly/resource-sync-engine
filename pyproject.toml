@@ -19,6 +19,9 @@ dev = ["pytest>=8.0", "pytest-httpx>=0.30", "pytest-asyncio>=0.23", "mypy>=1.8",
 [project.scripts]
 resource-sync = "resource_sync.cli.app:main"
 
+[tool.hatch.build.targets.wheel]
+packages = ["resource_sync"]
+
 [tool.mypy]
 strict = true
 python_version = "3.11"

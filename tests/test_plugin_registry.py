@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from resource_sync.plugin.errors import PluginError
 from resource_sync.plugin.registry import (
     PluginConflictError,
     PluginNotFoundError,
@@ -17,6 +18,10 @@ class TestPluginRegistry:
     @pytest.fixture
     def registry(self) -> PluginRegistry:
         return PluginRegistry()
+
+    def test_registry_errors_share_plugin_error_base(self) -> None:
+        assert issubclass(PluginConflictError, PluginError)
+        assert issubclass(PluginNotFoundError, PluginError)
 
     def test_register_and_get_fetcher(self, registry: PluginRegistry) -> None:
         class FakeFetcher:

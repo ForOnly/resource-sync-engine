@@ -194,7 +194,7 @@ class GitFetcher:
         Runs in a thread pool executor to avoid blocking the event loop.
         Raises ``PluginExecutionError`` on failure.
         """
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
 
         def _run() -> str:
             try:
@@ -229,7 +229,7 @@ class GitFetcher:
     @staticmethod
     async def _cleanup(temp_dir: str) -> None:
         """Remove a temporary directory, logging but not propagating errors."""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
 
         def _rmtree() -> None:
             try:

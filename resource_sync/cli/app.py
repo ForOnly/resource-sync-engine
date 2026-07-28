@@ -8,8 +8,10 @@ import sys
 from pathlib import Path
 
 from resource_sync.cli.parser import build_parser
+from resource_sync.domain.events import SyncCompleted
+from resource_sync.domain.models import SyncReport
 from resource_sync.engine.builder import PipelineBuilder
-from resource_sync.engine.config import ConfigError, load_config
+from resource_sync.engine.config import Config, ConfigError, load_config
 from resource_sync.engine.executor import PipelineExecutor
 from resource_sync.engine.orchestrator import SyncOrchestrator
 from resource_sync.eventbus.memory import EventBus
@@ -38,9 +40,9 @@ def _setup_logging(verbose: bool = False) -> None:
 def _discover_plugins() -> None:
     """Import all plugin modules to trigger their registration decorators."""
     import resource_sync.fetcher  # noqa: F401
-    import resource_sync.validator  # noqa: F401
-    import resource_sync.sink  # noqa: F401
     import resource_sync.observer  # noqa: F401
+    import resource_sync.sink  # noqa: F401
+    import resource_sync.validator  # noqa: F401
 
 
 def _write_report(report_json: str, repo_root: Path) -> bool:
@@ -53,6 +55,42 @@ def _write_report(report_json: str, repo_root: Path) -> bool:
     except OSError as e:
         _LOGGER.error("Failed to write sync report: %s", e)
         return False
+
+
+async def _run_and_finalize(
+        orchestrator: SyncOrchestrator,
+        event_bus: EventBus,
+        config: Config,
+        config_path: Path,
+        repo_root: Path,
+        dry_run: bool,
+        no_commit: bool,
+) -> tuple[SyncReport, bool, bool]:
+    """Run resources and emit completion only after all finalization succeeds."""
+    try:
+        report = await orchestrator.run(config, dry_run=dry_run)
+        report_written = await asyncio.to_thread(
+            _write_report,
+            report.to_json(),
+            repo_root,
+        )
+
+        git_succeeded = True
+        if not dry_run and not no_commit and report.changed > 0:
+            _LOGGER.info("Auto-committing %d changed resource(s)...", report.changed)
+            git_root = str(config.repo_root or config_path.parent.resolve())
+            git_succeeded = await asyncio.to_thread(
+                orchestrator.commit_changes,
+                repo_root=git_root,
+                changed=report.changed,
+            )
+
+        if not report.has_errors and report_written and git_succeeded:
+            await event_bus.emit(SyncCompleted(summary=str(report.summary)))
+
+        return report, report_written, git_succeeded
+    finally:
+        await orchestrator.shutdown()
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -108,17 +146,19 @@ def main(argv: list[str] | None = None) -> int:
             args.dry_run,
             config.max_concurrency,
         )
-        async def _run_and_cleanup():
-            report = await orchestrator.run(config, dry_run=args.dry_run)
-            await orchestrator.shutdown()
-            return report
+        report, report_written, git_succeeded = asyncio.run(
+            _run_and_finalize(
+                orchestrator=orchestrator,
+                event_bus=event_bus,
+                config=config,
+                config_path=config_path,
+                repo_root=repo_root,
+                dry_run=args.dry_run,
+                no_commit=args.no_commit,
+            )
+        )
 
-        report = asyncio.run(_run_and_cleanup())
-
-        # 5. Write report
-        report_written = _write_report(report.to_json(), repo_root)
-
-        # 6. Print summary
+        # 5. Print summary
         s = report.summary
         _LOGGER.info(
             "Summary — created: %d, updated: %d, skipped: %d, errors: %d",
@@ -128,14 +168,9 @@ def main(argv: list[str] | None = None) -> int:
             s.get("error", 0),
         )
 
-        # 7. Git commit (once, after all resources are synced)
-        if not args.dry_run and not args.no_commit and report.changed > 0:
-            _LOGGER.info("Auto-committing %d changed resource(s)...", report.changed)
-            git_root = str(config.repo_root or config_path.parent.resolve())
-            if not orchestrator.commit_changes(repo_root=git_root, changed=report.changed):
-                return 1
-
-        # 8. Exit code
+        # 6. Exit code
+        if not git_succeeded:
+            return 1
         if s.get("error", 0) > 0:
             return 1
         if not report_written:

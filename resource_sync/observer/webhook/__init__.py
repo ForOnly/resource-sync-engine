@@ -37,7 +37,7 @@ from resource_sync.observer.webhook import dingtalk  # noqa: F401
 from resource_sync.observer.webhook import generic  # noqa: F401
 from resource_sync.observer.webhook import slack  # noqa: F401
 from resource_sync.observer.webhook import wechat_work  # noqa: F401
-from resource_sync.plugin.registry import register_observer, register_webhook_platform
+from resource_sync.plugin.registry import register_observer
 
 _LOGGER = logging.getLogger(__name__)
 
